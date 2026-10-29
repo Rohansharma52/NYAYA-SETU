@@ -1,7 +1,0 @@
-{
-  "task_id": "task-aicte-c3-stub-pages",
-  "task_description": "Complete the 9 remaining stub page files in the AICTE C3 React+TS+Vite frontend (CoordinationDetailPage, CreateCoordinationPage, NotificationsPage, ReportsPage, ImportsPage, UserManagementPage, AuditLogPage, ProfilePage, HelpPage) and make `npm run build` pass with zero TypeScript errors.",
-  "status": "pending",
-  "feature_order": ["FEAT-001", "FEAT-002"],
-  "blocked_reason": null
-}

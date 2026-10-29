@@ -1,50 +1,31 @@
 import { apiClient } from './client'
-import type { User, PaginatedResponse } from '../types'
+import type { DirectoryUser, PaginatedResponse, User } from '../types'
 
-export interface ListUsersParams {
-  skip?: number
-  limit?: number
-  role?: string
-  account_status?: string
+export async function listUsers(params: { skip?: number; limit?: number; role?: string; account_status?: string } = {}): Promise<PaginatedResponse<User>> {
+  const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined))
+  return (await apiClient.get<PaginatedResponse<User>>('/users/', { params: clean })).data
 }
 
-/** GET /users/ */
-export async function listUsers(
-  params?: ListUsersParams
-): Promise<PaginatedResponse<User>> {
-  const res = await apiClient.get<PaginatedResponse<User>>('/users/', { params })
-  return res.data
+export async function officerDirectory(bureauId?: number): Promise<DirectoryUser[]> {
+  return (await apiClient.get<DirectoryUser[]>('/users/directory', { params: { bureau_id: bureauId } })).data
 }
 
-/** GET /users/:id */
-export async function getUser(id: number): Promise<User> {
-  const res = await apiClient.get<User>(`/users/${id}`)
-  return res.data
+export async function updateUser(id: number, data: Record<string, unknown>): Promise<User> {
+  return (await apiClient.put<User>(`/users/${id}`, data)).data
 }
 
-/** PUT /users/:id */
-export async function updateUser(
-  id: number,
-  data: Record<string, unknown>
-): Promise<User> {
-  const res = await apiClient.put<User>(`/users/${id}`, data)
-  return res.data
+export async function approveUser(id: number) {
+  return (await apiClient.post(`/users/${id}/approve`)).data
 }
 
-/** POST /users/:id/approve */
-export async function approveUser(id: number): Promise<User> {
-  const res = await apiClient.post<User>(`/users/${id}/approve`)
-  return res.data
+export async function rejectUser(id: number) {
+  return (await apiClient.post(`/users/${id}/reject`)).data
 }
 
-/** POST /users/:id/reject */
-export async function rejectUser(id: number): Promise<User> {
-  const res = await apiClient.post<User>(`/users/${id}/reject`)
-  return res.data
+export async function suspendUser(id: number) {
+  return (await apiClient.post(`/users/${id}/suspend`)).data
 }
 
-/** POST /users/:id/suspend */
-export async function suspendUser(id: number): Promise<User> {
-  const res = await apiClient.post<User>(`/users/${id}/suspend`)
-  return res.data
+export async function reactivateUser(id: number) {
+  return (await apiClient.post(`/users/${id}/reactivate`)).data
 }

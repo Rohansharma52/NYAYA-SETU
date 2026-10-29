@@ -1,203 +1,83 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { GitBranch } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeftRight, Check, ClipboardCheck, ShieldAlert, X } from 'lucide-react'
+import { listRelationships, reviewRelationship } from '../../api/relationships'
+import { apiError } from '../../api/client'
 import { PageHeader } from '../../components/layout/PageHeader'
-import {
-  DataNote,
-  Card,
-  Badge,
-  Button,
-  Modal,
-  Select,
-  Textarea,
-  TableSkeleton,
-  ErrorState,
-  EmptyState,
-  Pagination,
-} from '../../components/ui'
-import type { BadgeColor } from '../../components/ui'
-import { getRelationshipInbox, reviewRelationship } from '../../api/relationships'
+import { Button, Card, ClassificationBadge, EmptyState, ErrorState, Modal, Segmented, SeverityBadge, StatusBadge, TableSkeleton, Textarea } from '../../components/ui'
+import { useAuth } from '../../contexts/AuthContext'
 import { toast } from '../../hooks/useToast'
-import type { ReviewPayload } from '../../api/relationships'
-import { ReviewStatus, RelationshipType } from '../../types'
+import { fromNow, titleCase } from '../../lib/format'
+import type { CaseRelationship, RuleHit } from '../../types'
 
-const LIMIT = 20
-
-const DECISION_OPTIONS = [
-  { value: 'confirmed', label: 'Confirm' },
-  { value: 'rejected', label: 'Reject' },
-  { value: 'escalated', label: 'Escalate' },
-]
-
-const CORRECTED_TYPE_OPTIONS = Object.values(RelationshipType).map(t => ({
-  value: t,
-  label: t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-}))
-
-function reviewColor(s: ReviewStatus): BadgeColor {
-  switch (s) {
-    case ReviewStatus.pending: return 'yellow'
-    case ReviewStatus.confirmed: return 'green'
-    case ReviewStatus.rejected: return 'red'
-    case ReviewStatus.escalated: return 'orange'
-    case ReviewStatus.corrected: return 'blue'
-    default: return 'gray'
-  }
+const TYPE_TO_CLASS: Record<string, string> = {
+  possible_duplicate: 'duplicate', action_conflict: 'action_conflict', related_complaint: 'related_pattern', same_institution_unrelated: 'independent',
 }
 
 export default function RelationshipInboxPage() {
-  const queryClient = useQueryClient()
-  const [skip, setSkip] = useState(0)
-  const [selected, setSelected] = useState<number | null>(null)
-  const [decision, setDecision] = useState('confirmed')
-  const [rationale, setRationale] = useState('')
-  const [correctedType, setCorrectedType] = useState('')
-
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['relationships', 'inbox', skip],
-    queryFn: () => getRelationshipInbox({ skip, limit: LIMIT }),
+  const qc = useQueryClient()
+  const { hasRole } = useAuth()
+  const [status, setStatus] = useState<'pending' | 'confirmed' | 'rejected' | ''>('pending')
+  const [target, setTarget] = useState<{ r: CaseRelationship; decision: 'confirmed' | 'rejected' } | null>(null)
+  const [why, setWhy] = useState('')
+  const q = useQuery({ queryKey: ['relationships', status], queryFn: () => listRelationships({ review_status: status || undefined, limit: 100 }) })
+  const m = useMutation({
+    mutationFn: () => reviewRelationship(target!.r.id, { decision: target!.decision, rationale: why }),
+    onSuccess: () => { toast.success('Review recorded — source cases unchanged'); setTarget(null); setWhy(''); qc.invalidateQueries({ queryKey: ['relationships'] }) },
+    onError: (e) => toast.error(apiError(e)),
   })
-
-  const reviewMut = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: ReviewPayload }) =>
-      reviewRelationship(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['relationships', 'inbox'] })
-      toast.success('Review submitted')
-      setSelected(null)
-      setDecision('confirmed')
-      setRationale('')
-      setCorrectedType('')
-    },
-    onError: () => toast.error('Review failed'),
-  })
-
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-
-  const handleReview = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selected) return
-    const payload: ReviewPayload = {
-      decision,
-      rationale: rationale || undefined,
-      corrected_type: correctedType || undefined,
-    }
-    reviewMut.mutate({ id: selected, payload })
-  }
-
+  const canReview = hasRole(['coordination_reviewer', 'system_admin', 'senior_management'])
   return (
-    <>
-      <PageHeader title="Relationship Inbox" />
-      <DataNote message="Pending case relationship candidates from automated matching. Review and confirm or reject each." />
-
-      <div className="mt-4">
-        <Card>
-          {isLoading ? (
-            <TableSkeleton cols={6} />
-          ) : isError ? (
-            <ErrorState message="Failed to load relationship inbox" onRetry={() => refetch()} />
-          ) : items.length === 0 ? (
-            <EmptyState icon={GitBranch} title="No pending relationships" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Case A</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Case B</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.map(rel => (
-                    <tr key={rel.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Link
-                          to={`/cases/${rel.case_a_id}`}
-                          className="font-mono text-xs text-indigo-600 hover:text-indigo-800"
-                        >
-                          {rel.case_a?.case_number ?? `#${rel.case_a_id}`}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Link
-                          to={`/cases/${rel.case_b_id}`}
-                          className="font-mono text-xs text-indigo-600 hover:text-indigo-800"
-                        >
-                          {rel.case_b?.case_number ?? `#${rel.case_b_id}`}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700">
-                        {rel.relationship_type.replace(/_/g, ' ')}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <span className="font-semibold">{(rel.score * 100).toFixed(0)}%</span>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Badge color={reviewColor(rel.review_status)}>
-                          {rel.review_status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        {rel.review_status === ReviewStatus.pending && (
-                          <Button size="sm" onClick={() => setSelected(rel.id)}>
-                            Review
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
+    <div>
+      <PageHeader eyebrow="Human-in-the-loop" title="Review Inbox"
+        description="Suggested links between cases. A reviewer confirms or rejects each one with a reason; nothing is merged or closed automatically."
+        actions={<Segmented value={status} onChange={setStatus} options={[{ value: 'pending', label: 'Pending' }, { value: 'confirmed', label: 'Confirmed' }, { value: 'rejected', label: 'Rejected' }, { value: '', label: 'All' }]} />} />
+      <Card noPadding>
+        {q.isLoading ? <TableSkeleton /> : q.isError ? <ErrorState onRetry={() => q.refetch()} /> : (q.data?.items ?? []).length === 0 ? (
+          <EmptyState icon={ClipboardCheck} title="Inbox zero" description="No suggestions in this view." />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {q.data!.items.map((r) => {
+              const ev = (r.matching_evidence ?? {}) as { severity?: string; rules?: RuleHit[]; classification?: string }
+              return (
+                <li key={r.id} className="p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ClassificationBadge value={ev.classification ?? TYPE_TO_CLASS[r.relationship_type] ?? r.relationship_type} />
+                    {ev.severity && <SeverityBadge severity={ev.severity} />}
+                    <span className="text-xs text-slate-400">score {Math.round((r.score ?? 0) * 100)} · {r.algorithm_version} · {fromNow(r.created_at)}</span>
+                    {r.review_status !== 'pending' && <span className="chip ml-auto border-slate-200 bg-slate-50 text-slate-600">{titleCase(r.review_status)}</span>}
+                  </div>
+                  <div className="mt-3 grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                    {[r.case_a, r.case_b].map((c, i) => c && (
+                      <Link key={c.id} to={`/cases/${c.id}`} className={`min-w-0 rounded-xl border border-slate-200 p-3 transition hover:border-royal-200 ${i ? 'md:order-3' : ''}`}>
+                        <div className="flex items-center justify-between gap-2"><span className="font-mono text-[11px] text-slate-400">{c.case_number}</span><StatusBadge status={c.status} /></div>
+                        <p className="mt-1 truncate text-sm font-semibold text-slate-800">{c.title}</p>
+                        <p className="text-xs text-slate-400">{c.category}</p>
+                      </Link>
+                    ))}
+                    <span className="flex justify-center md:order-2"><ArrowLeftRight className="h-4 w-4 text-slate-400" /></span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">{(r.reasons ?? []).map((x) => <span key={x} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{x}</span>)}</div>
+                  {(ev.rules ?? []).map((rule) => (
+                    <p key={rule.code} className="mt-2 flex gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800"><ShieldAlert className="h-3.5 w-3.5 shrink-0" /><b>{rule.code}</b> {rule.explanation}</p>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Pagination total={total} skip={skip} limit={LIMIT} onPageChange={setSkip} />
-
-      <Modal
-        isOpen={selected !== null}
-        onClose={() => setSelected(null)}
-        title="Review Relationship"
-        size="md"
-      >
-        <form onSubmit={handleReview} className="space-y-4">
-          <Select
-            label="Decision"
-            required
-            value={decision}
-            onChange={e => setDecision(e.target.value)}
-            options={DECISION_OPTIONS}
-          />
-          <Textarea
-            label="Rationale (optional)"
-            value={rationale}
-            onChange={e => setRationale(e.target.value)}
-          />
-          {decision === 'confirmed' && (
-            <Select
-              label="Corrected Type (optional)"
-              value={correctedType}
-              onChange={e => setCorrectedType(e.target.value)}
-              options={[{ value: '', label: 'Keep as detected' }, ...CORRECTED_TYPE_OPTIONS]}
-            />
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" type="button" onClick={() => setSelected(null)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={reviewMut.isPending}>
-              Submit Review
-            </Button>
-          </div>
-        </form>
+                  {r.review_status === 'pending' && canReview && (
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button size="sm" variant="secondary" leftIcon={<X className="h-3.5 w-3.5" />} onClick={() => setTarget({ r, decision: 'rejected' })}>Not related</Button>
+                      <Button size="sm" variant="success" leftIcon={<Check className="h-3.5 w-3.5" />} onClick={() => setTarget({ r, decision: 'confirmed' })}>Confirm link</Button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Card>
+      <Modal isOpen={!!target} onClose={() => setTarget(null)} title={target?.decision === 'confirmed' ? 'Confirm link' : 'Reject suggestion'} description="Your rationale is stored with the review and audit log."
+        footer={<><Button variant="secondary" onClick={() => setTarget(null)}>Cancel</Button><Button disabled={!why.trim()} loading={m.isPending} onClick={() => m.mutate()}>Submit</Button></>}>
+        <Textarea label="Rationale" required rows={3} value={why} onChange={(e) => setWhy(e.target.value)} />
       </Modal>
-    </>
+    </div>
   )
 }

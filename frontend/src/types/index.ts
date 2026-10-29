@@ -11,12 +11,16 @@ export enum UserRole {
 
 export enum CaseStatus {
   received = 'received',
+  triaged = 'triaged',
   assigned = 'assigned',
   under_process = 'under_process',
+  awaiting_information = 'awaiting_information',
+  decision_review = 'decision_review',
   disposed = 'disposed',
   escalated = 'escalated',
-  overdue = 'overdue',
+  transfer_requested = 'transfer_requested',
   transferred = 'transferred',
+  reopened = 'reopened',
   closed = 'closed',
 }
 
@@ -24,227 +28,330 @@ export enum CasePriority {
   low = 'low',
   medium = 'medium',
   high = 'high',
-  critical = 'critical',
+  urgent = 'urgent',
 }
 
-export enum RelationshipType {
-  duplicate = 'duplicate',
-  related = 'related',
-  parent_child = 'parent_child',
-  transferred_from = 'transferred_from',
-  transferred_to = 'transferred_to',
-}
-
-export enum ReviewStatus {
-  pending = 'pending',
-  confirmed = 'confirmed',
-  rejected = 'rejected',
-  escalated = 'escalated',
-  corrected = 'corrected',
-}
-
-export enum CoordinationStatus {
-  draft = 'draft',
-  pending_acknowledgement = 'pending_acknowledgement',
-  active = 'active',
-  overdue = 'overdue',
-  resolved = 'resolved',
-  closed = 'closed',
-}
-
-export enum AccountStatus {
-  pending_approval = 'pending_approval',
-  active = 'active',
-  suspended = 'suspended',
-  rejected = 'rejected',
-}
-
-// ─── Core Models ──────────────────────────────────────────────────────────────
+// ─── Core models ──────────────────────────────────────────────────────────────
 
 export interface Bureau {
-  id: number;
-  code: string;
-  name: string;
-  description?: string;
-  head_name?: string;
-  is_active: boolean;
+  id: number
+  code: string
+  name: string
+  description?: string
+  head_name?: string
+  is_active: boolean
 }
 
 export interface User {
-  id: number;
-  email: string;
-  full_name: string;
-  role: UserRole;
-  account_status: AccountStatus;
-  bureau_id?: number;
-  bureau?: Bureau;
-  designation?: string;
-  is_active: boolean;
-  created_at: string;
+  id: number
+  email: string
+  full_name: string
+  role: UserRole | string
+  account_status: string
+  bureau_id?: number | null
+  region?: string | null
+  designation?: string | null
+  is_active: boolean
+  last_login?: string | null
+  created_at?: string
+}
+
+export interface DirectoryUser {
+  id: number
+  full_name: string
+  designation?: string | null
+  bureau_id?: number | null
+  role: string
 }
 
 export interface InstitutionIdentifier {
-  id: number;
-  id_type: string;
-  id_value: string;
-  source_system: string;
-  is_primary: boolean;
-  is_verified: boolean;
+  id: number
+  id_type: string
+  id_value: string
+  source_system?: string | null
+  is_primary: boolean
+  is_verified: boolean
 }
 
 export interface Institution {
-  id: number;
-  canonical_name: string;
-  short_name?: string;
-  institution_type: string;
-  status: string;
-  state?: string;
-  district?: string;
-  city?: string;
-  region?: string;
-  identifiers: InstitutionIdentifier[];
-  created_at: string;
-  updated_at: string;
+  id: number
+  canonical_name: string
+  short_name?: string | null
+  institution_type?: string | null
+  status: string
+  state?: string | null
+  district?: string | null
+  city?: string | null
+  region?: string | null
+  address?: string | null
+  pincode?: string | null
+  email?: string | null
+  website?: string | null
+  identifiers: InstitutionIdentifier[]
+  total_cases?: number
+  open_cases?: number
+  created_at?: string
+}
+
+export interface PersonBrief {
+  id: number
+  full_name: string
+  email?: string
+  role?: string
 }
 
 export interface CaseAction {
-  id: number;
-  case_id: number;
-  action_type: string;
-  description: string;
-  old_status?: CaseStatus;
-  new_status?: CaseStatus;
-  performed_by?: User;
-  created_at: string;
+  id: number
+  action_type: string
+  description: string
+  old_status?: string | null
+  new_status?: string | null
+  performed_by?: PersonBrief | null
+  created_at: string
 }
 
 export interface Case {
-  id: number;
-  case_number: string;
-  title: string;
-  summary?: string;
-  category: string;
-  status: CaseStatus;
-  priority: CasePriority;
-  institution_id?: number;
-  institution?: Institution;
-  bureau_id?: number;
-  bureau?: Bureau;
-  assigned_officer_id?: number;
-  assigned_officer?: User;
-  received_date: string;
-  due_date?: string;
-  next_action?: string;
-  created_at: string;
-  updated_at: string;
+  id: number
+  case_number: string
+  source_case_id?: string | null
+  title: string
+  summary?: string | null
+  category: string
+  sub_category?: string | null
+  status: string
+  priority: string
+  institution_id: number
+  institution?: { id: number; canonical_name: string; state?: string | null } | null
+  bureau_id?: number | null
+  bureau?: { id: number; code: string; name: string } | null
+  assigned_officer_id?: number | null
+  assigned_officer?: PersonBrief | null
+  complainant_name?: string | null
+  complainant_email?: string | null
+  complainant_phone?: string | null
+  can_act?: boolean
+  received_date?: string | null
+  due_date?: string | null
+  disposed_date?: string | null
+  next_action?: string | null
+  last_action?: string | null
+  last_action_date?: string | null
+  overlap_bureaus?: string[]
+  actions?: CaseAction[]
+  created_at?: string
+  updated_at?: string
 }
 
 export interface CaseRelationship {
-  id: number;
-  case_a_id: number;
-  case_b_id: number;
-  case_a?: Case;
-  case_b?: Case;
-  relationship_type: RelationshipType;
-  score: number;
-  reasons: string[];
-  matching_evidence: Record<string, unknown>[];
-  algorithm_version?: string;
-  review_status: ReviewStatus;
-  reviewed_by?: User;
-  review_notes?: string;
-  created_at: string;
+  id: number
+  case_a_id: number
+  case_b_id: number
+  case_a?: { id: number; case_number: string; title: string; category: string; status: string } | null
+  case_b?: { id: number; case_number: string; title: string; category: string; status: string } | null
+  relationship_type: string
+  score?: number | null
+  reasons?: string[] | null
+  matching_evidence?: Record<string, unknown> | null
+  algorithm_version?: string | null
+  review_status: string
+  created_at?: string
 }
 
 export interface CoordinationParticipant {
-  id: number;
-  coordination_item_id: number;
-  bureau?: Bureau;
-  user?: User;
-  role_in_coordination: string;
-  acknowledged: boolean;
-  acknowledged_at?: string;
+  id: number
+  bureau_id?: number | null
+  user_id?: number | null
+  role_in_coordination?: string | null
+  acknowledged: boolean
+  acknowledged_at?: string | null
 }
 
 export interface CoordinationTask {
-  id: number;
-  coordination_item_id: number;
-  title: string;
-  description?: string;
-  assigned_to?: User;
-  due_date?: string;
-  is_completed: boolean;
-  completed_at?: string;
+  id: number
+  title: string
+  description?: string | null
+  assigned_to_id?: number | null
+  due_date?: string | null
+  is_completed: boolean
+  completed_at?: string | null
+  completion_notes?: string | null
+  created_at?: string | null
 }
 
 export interface CoordinationItem {
-  id: number;
-  reference_number: string;
-  title: string;
-  description?: string;
-  status: CoordinationStatus;
-  decision?: string;
-  owner?: User;
-  participants: CoordinationParticipant[];
-  tasks: CoordinationTask[];
-  acknowledge_by?: string;
-  action_due_date?: string;
-  created_at: string;
+  id: number
+  reference_number: string
+  title: string
+  description?: string | null
+  status: string
+  decision?: string | null
+  decision_rationale?: string | null
+  owner_id?: number | null
+  acknowledge_by?: string | null
+  action_due_date?: string | null
+  closure_notes?: string | null
+  is_exception_closure?: boolean
+  institution_id?: number | null
+  lead_bureau_id?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+  participants: CoordinationParticipant[]
+  tasks: CoordinationTask[]
 }
 
 export interface Notification {
-  id: number;
-  user_id: number;
-  title: string;
-  message: string;
-  notification_type: string;
-  priority: string;
-  is_read: boolean;
-  created_at: string;
-  link_url?: string;
+  id: number
+  title: string
+  message: string
+  notification_type?: string | null
+  priority: string
+  is_read: boolean
+  link_url?: string | null
+  related_case_id?: number | null
+  created_at: string
 }
-
-// ─── API Response Shapes ──────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  skip: number;
-  limit: number;
+  items: T[]
+  total: number
+  skip: number
+  limit: number
 }
 
-export interface DashboardStats {
-  total_cases: number;
-  cases_by_status: Record<string, number>;
-  cases_by_bureau: Record<string, number>;
-  overdue_cases: number;
-  unreviewed_relationships: number;
-  pending_coordination: number;
-  pending_transfers: number;
+// ─── Intelligence ─────────────────────────────────────────────────────────────
+
+export interface RuleHit {
+  code: string
+  title: string
+  explanation: string
+  severity: string
 }
 
-// ─── Form Types ───────────────────────────────────────────────────────────────
-
-export interface LoginForm {
-  email: string;
-  password: string;
+export interface PairAnalysis {
+  case_a_id: number
+  case_b_id: number
+  case_a_number: string
+  case_b_number: string
+  bureau_a: string
+  bureau_b: string
+  cross_bureau: boolean
+  classification: 'duplicate' | 'action_conflict' | 'related_pattern' | 'independent'
+  headline: string
+  severity: string
+  text_similarity: number
+  shared_issues: string[]
+  same_complainant: boolean
+  reasons: string[]
+  rules: RuleHit[]
 }
 
-export interface SignupForm {
-  email: string;
-  full_name: string;
-  password: string;
-  confirm_password: string;
-  designation?: string;
+export interface LeadBureau {
+  bureau_code: string
+  bureau_id: number | null
+  bureau_name: string
+  score: number
+  reasons: string[]
+  supporting_bureaus: string[]
+  protocol: string[]
 }
 
-export interface CreateCaseForm {
-  title: string;
-  summary?: string;
-  category: string;
-  priority: CasePriority;
-  institution_id?: number;
-  bureau_id?: number;
-  source_case_id?: string;
-  due_date?: string;
+export interface OverlapAnalysis {
+  ruleset: string
+  banner: string | null
+  coordination_required: boolean
+  severity: string
+  active_bureaus: string[]
+  bureaus_involved: string[]
+  classification_counts: Record<string, number>
+  pairs: PairAnalysis[]
+  lead_bureau: LeadBureau | null
+  recommended_actions: string[]
+}
+
+export interface CaseBrief {
+  id: number
+  case_number: string
+  source_case_id?: string | null
+  title: string
+  category: string
+  status: string
+  priority: string
+  bureau_id: number | null
+  bureau_code: string | null
+  bureau_name: string | null
+  officer: string | null
+  received_date: string | null
+  due_date: string | null
+  last_action: string | null
+  last_action_date: string | null
+  next_action: string | null
+}
+
+export interface InstitutionBrief {
+  id: number
+  canonical_name: string
+  short_name?: string | null
+  city?: string | null
+  state?: string | null
+  region?: string | null
+  aicte_id?: string | null
+}
+
+export interface OverlapCluster {
+  institution: InstitutionBrief
+  case_count: number
+  open_case_count: number
+  cases: CaseBrief[]
+  analysis: OverlapAnalysis
+  coordination: { id: number; reference_number: string; status: string; lead_bureau_id: number | null } | null
+}
+
+export interface RiskFactor {
+  code: string
+  label: string
+  points: number
+  detail: string
+}
+
+export interface RiskProfile {
+  score: number
+  level: 'critical' | 'high' | 'elevated' | 'low'
+  factors: RiskFactor[]
+  systemic_issues: { issue: string; label: string; count: number }[]
+  recommendations: string[]
+  complaints_90d: number
+  open_cases: number
+  overdue_cases: number
+}
+
+export interface ResolveCandidate {
+  institution_id: number
+  canonical_name: string
+  short_name?: string | null
+  city?: string | null
+  state?: string | null
+  region?: string | null
+  aicte_id?: string | null
+  confidence: number
+  band: 'confirmed' | 'high' | 'probable' | 'weak'
+  evidence: { signal: string; detail: string; strength: number }[]
+  conflicts: string[]
+}
+
+export interface ResolveResult {
+  engine: string
+  signals: {
+    normalized_text: string
+    aicte_ids: string[]
+    aishe_ids: string[]
+    pincodes: string[]
+    domains: string[]
+    phones: string[]
+    transliterated: boolean
+  }
+  candidates: ResolveCandidate[]
+  ambiguous: boolean
+  decision: 'auto_link_suggested' | 'human_confirmation_required' | 'no_match'
+  note: string
+  registry_size: number
 }

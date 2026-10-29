@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.security import get_current_active_user, require_roles
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/relationships", tags=["relationships"])
 
 class ReviewRequest(BaseModel):
     decision: str  # confirmed, rejected, corrected, escalated
-    rationale: Optional[str] = None
+    rationale: str
     corrected_type: Optional[str] = None
 
 
@@ -31,6 +32,17 @@ class CaseBrief(BaseModel):
     title: str
     category: str
     status: str
+    class Config: from_attributes = True
+
+
+class ReviewOut(BaseModel):
+    id: int
+    relationship_id: int
+    decision: str
+    reviewer_id: int
+    corrected_type: Optional[str] = None
+    rationale: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     class Config: from_attributes = True
 
 
@@ -47,16 +59,7 @@ class RelationshipOut(BaseModel):
     algorithm_version: Optional[str] = None
     review_status: str
     created_at: Optional[datetime] = None
-    class Config: from_attributes = True
-
-
-class ReviewOut(BaseModel):
-    id: int
-    relationship_id: int
-    decision: str
-    corrected_type: Optional[str] = None
-    rationale: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
+    reviews: List[ReviewOut] = []
     class Config: from_attributes = True
 
 
@@ -65,6 +68,16 @@ class PaginatedRelationships(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+def _scope_relationship_query(query, current_user: User):
+    """Keep bureau officers inside candidates involving their own bureau."""
+    if current_user.role == UserRole.BUREAU_OFFICER:
+        query = query.filter(or_(
+            CaseRelationship.case_a.has(Case.bureau_id == current_user.bureau_id),
+            CaseRelationship.case_b.has(Case.bureau_id == current_user.bureau_id),
+        ))
+    return query
 
 
 @router.get("/inbox", response_model=PaginatedRelationships)
@@ -81,6 +94,7 @@ async def review_inbox(
         .filter(CaseRelationship.review_status == ReviewStatus.PENDING)
         .order_by(CaseRelationship.created_at.desc())
     )
+    query = _scope_relationship_query(query, current_user)
     total = query.count()
     items = query.offset(skip).limit(limit).all()
     return {"items": items, "total": total, "skip": skip, "limit": limit}
@@ -91,6 +105,7 @@ async def list_relationships(
     review_status: Optional[str] = Query(None),
     relationship_type: Optional[str] = Query(None),
     case_id: Optional[int] = Query(None),
+    institution_id: Optional[int] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_active_user),
@@ -99,6 +114,7 @@ async def list_relationships(
     query = db.query(CaseRelationship).options(
         joinedload(CaseRelationship.case_a), joinedload(CaseRelationship.case_b)
     )
+    query = _scope_relationship_query(query, current_user)
     if review_status:
         try:
             query = query.filter(CaseRelationship.review_status == ReviewStatus(review_status))
@@ -113,6 +129,11 @@ async def list_relationships(
         query = query.filter(
             (CaseRelationship.case_a_id == case_id) | (CaseRelationship.case_b_id == case_id)
         )
+    if institution_id:
+        query = query.filter(or_(
+            CaseRelationship.case_a.has(Case.institution_id == institution_id),
+            CaseRelationship.case_b.has(Case.institution_id == institution_id),
+        ))
     total = query.count()
     items = query.order_by(CaseRelationship.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": items, "total": total, "skip": skip, "limit": limit}
@@ -131,6 +152,11 @@ async def get_relationship(
         .filter(CaseRelationship.id == rel_id)
         .first()
     )
+    if rel and current_user.role == UserRole.BUREAU_OFFICER and not (
+        rel.case_a.bureau_id == current_user.bureau_id or
+        rel.case_b.bureau_id == current_user.bureau_id
+    ):
+        rel = None
     if not rel:
         raise HTTPException(status_code=404, detail="Relationship not found")
     return rel
@@ -158,6 +184,10 @@ async def review_relationship(
         decision = ReviewStatus(payload.decision)
     except ValueError:
         raise HTTPException(status_code=422, detail=f"Invalid decision: {payload.decision}")
+    if decision == ReviewStatus.PENDING:
+        raise HTTPException(status_code=422, detail="A review decision is required")
+    if not payload.rationale.strip():
+        raise HTTPException(status_code=422, detail="Rationale is required for a review decision")
 
     corrected_type = None
     if payload.corrected_type:
@@ -187,7 +217,7 @@ async def review_relationship(
         raise HTTPException(status_code=500, detail="Review submission failed")
 
     log_audit(db, current_user.id, "relationship_reviewed", "case_relationship", rel_id,
-              f"Decision: {decision.value}; Rationale: {payload.rationale}")
+        f"Decision: {decision.value}; Rationale: {payload.rationale}")
 
     return {
         "message": "Review recorded successfully",
@@ -205,6 +235,8 @@ async def trigger_detection(
     """Manually trigger relationship matching for a case."""
     case = db.query(Case).filter(Case.id == case_id, Case.is_active == True).first()
     if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if current_user.role == UserRole.BUREAU_OFFICER and case.bureau_id != current_user.bureau_id:
         raise HTTPException(status_code=404, detail="Case not found")
 
     try:

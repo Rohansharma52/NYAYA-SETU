@@ -1,111 +1,35 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { ScrollText } from 'lucide-react'
+import { listAudit, type AuditEvent } from '../../api/audit'
 import { PageHeader } from '../../components/layout/PageHeader'
-import { DataNote, Select, Card, Pagination, TableSkeleton, ErrorState, EmptyState } from '../../components/ui'
-import { listAudit } from '../../api/audit'
-
-const LIMIT = 50
-
-const ACTION_OPTIONS = [
-  { value: 'all', label: 'All' },
-  { value: 'case_created', label: 'Case Created' },
-  { value: 'status_changed', label: 'Status Changed' },
-  { value: 'case_assigned', label: 'Case Assigned' },
-  { value: 'coordination_created', label: 'Coordination Created' },
-  { value: 'coordination_closed', label: 'Coordination Closed' },
-  { value: 'import_committed', label: 'Import Committed' },
-]
+import { Card, EmptyState, Pagination, SearchBar, Table, TableSkeleton } from '../../components/ui'
+import { useDebounce } from '../../hooks/useData'
+import { fmtDateTime, titleCase } from '../../lib/format'
 
 export default function AuditLogPage() {
+  const [action, setAction] = useState('')
   const [skip, setSkip] = useState(0)
-  const [action, setAction] = useState('all')
-
-  const auditQ = useQuery({
-    queryKey: ['audit', skip, action],
-    queryFn: () =>
-      listAudit({
-        skip,
-        limit: LIMIT,
-        ...(action !== 'all' ? { action } : {}),
-      }),
-  })
-
-  const items = auditQ.data?.items ?? []
-  const total = auditQ.data?.total ?? 0
-
+  const da = useDebounce(action, 300)
+  const q = useQuery({ queryKey: ['audit', da, skip], queryFn: () => listAudit({ action: da || undefined, skip, limit: 50 }), placeholderData: keepPreviousData })
   return (
-    <div className="space-y-4">
-      <PageHeader title="Audit Log" />
-      <DataNote />
-
-      {/* Filter row */}
-      <div className="flex items-end gap-4">
-        <div className="w-64">
-          <Select
-            label="Action"
-            options={ACTION_OPTIONS}
-            value={action}
-            onChange={e => {
-              setAction(e.target.value)
-              setSkip(0)
-            }}
-          />
-        </div>
-      </div>
-
-      <Card>
-        {auditQ.isLoading ? (
-          <TableSkeleton cols={6} />
-        ) : auditQ.isError ? (
-          <ErrorState onRetry={() => auditQ.refetch()} />
-        ) : items.length === 0 ? (
-          <EmptyState title="No audit events" />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-                    Timestamp
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-                    Resource Type
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-                    Resource ID
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {items.map(e => (
-                  <tr key={e.id}>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      {format(new Date(e.created_at), 'dd MMM yyyy HH:mm')}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      {e.user?.full_name ?? (e.user_id ? `User #${e.user_id}` : '—')}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      <span className="font-mono text-xs">{e.action}</span>
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap">{e.resource_type}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{e.resource_id ?? '—'}</td>
-                    <td className="px-4 py-2 max-w-xs truncate">
-                      {e.detail ? JSON.stringify(e.detail) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+    <div>
+      <PageHeader eyebrow="Accountability & transparency" title="Audit trail" description="Every mutation, review, export and download — who, what and when. Append-only." />
+      <Card noPadding>
+        <div className="border-b border-slate-100 p-4"><SearchBar value={action} onChange={(v) => { setAction(v); setSkip(0) }} placeholder="Filter by action, e.g. status_changed, transfer, coordination…" /></div>
+        {q.isLoading ? <TableSkeleton /> : (
+          <>
+            <Table<AuditEvent> data={q.data?.items ?? []} rowKey={(e) => e.id} empty={<EmptyState icon={ScrollText} title="No events" />} columns={[
+              { key: 't', header: 'When', render: (e) => <span className="whitespace-nowrap text-xs text-slate-500">{fmtDateTime(e.created_at)}</span> },
+              { key: 'u', header: 'User', render: (e) => <span className="text-[13px] font-medium">{e.user_name ?? (e.user_id ? `#${e.user_id}` : 'system')}</span> },
+              { key: 'a', header: 'Action', render: (e) => <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">{e.action}</span> },
+              { key: 'r', header: 'Resource', render: (e) => <span className="text-xs text-slate-500">{titleCase(e.resource_type)} {e.resource_id ? `#${e.resource_id}` : ''}</span> },
+              { key: 'd', header: 'Details', render: (e) => <span className="line-clamp-1 max-w-[420px] text-[13px] text-slate-600">{e.description}</span> },
+            ]} />
+            <div className="border-t border-slate-100 px-4 py-3"><Pagination total={q.data?.total ?? 0} skip={skip} limit={50} onPageChange={setSkip} /></div>
+          </>
         )}
       </Card>
-
-      <Pagination total={total} skip={skip} limit={LIMIT} onPageChange={setSkip} />
     </div>
   )
 }

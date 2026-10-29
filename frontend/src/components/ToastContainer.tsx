@@ -1,49 +1,31 @@
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useToast, type ToastItem } from '../hooks/useToast'
+import { cn } from '../lib/cn'
 
-const TYPE_STYLES: Record<ToastItem['type'], string> = {
-  success: 'bg-green-600 text-white',
-  error: 'bg-red-600 text-white',
-  warning: 'bg-yellow-500 text-white',
-  info: 'bg-blue-600 text-white',
-}
-
-const TYPE_ICON: Record<ToastItem['type'], string> = {
-  success: '✓',
-  error: '✕',
-  warning: '⚠',
-  info: 'ℹ',
+const META: Record<ToastItem['type'], { icon: typeof Info; tone: string; bar: string }> = {
+  success: { icon: CheckCircle2, tone: 'text-emerald-500', bar: 'bg-emerald-500' },
+  error: { icon: XCircle, tone: 'text-rose-500', bar: 'bg-rose-500' },
+  warning: { icon: AlertTriangle, tone: 'text-amber-500', bar: 'bg-amber-500' },
+  info: { icon: Info, tone: 'text-royal-500', bar: 'bg-royal-500' },
 }
 
 export function ToastContainer() {
   const { toasts, dismiss } = useToast()
-
-  if (toasts.length === 0) return null
-
   return (
-    <div
-      aria-live="polite"
-      aria-label="Notifications"
-      className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 w-80 no-print"
-    >
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          role="alert"
-          className={`flex items-start gap-3 rounded-lg px-4 py-3 shadow-lg text-sm transition-all ${TYPE_STYLES[t.type]}`}
-        >
-          <span className="mt-0.5 font-bold text-base leading-none" aria-hidden="true">
-            {TYPE_ICON[t.type]}
-          </span>
-          <span className="flex-1">{t.message}</span>
-          <button
-            onClick={() => dismiss(t.id)}
-            aria-label="Dismiss notification"
-            className="ml-auto shrink-0 opacity-70 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          >
-            ×
-          </button>
-        </div>
-      ))}
+    <div aria-live="polite" className="no-print pointer-events-none fixed bottom-5 right-5 z-[100] flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-2">
+      {toasts.map((t) => {
+        const m = META[t.type]
+        return (
+          <div key={t.id} role="status" className="pointer-events-auto relative flex animate-slide-in-right items-start gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-lift">
+            <span className={cn('absolute inset-y-0 left-0 w-1', m.bar)} />
+            <m.icon className={cn('mt-0.5 h-5 w-5 shrink-0', m.tone)} />
+            <p className="flex-1 text-sm font-medium text-slate-700">{t.message}</p>
+            <button onClick={() => dismiss(t.id)} aria-label="Dismiss" className="rounded-md p-0.5 text-slate-400 hover:text-slate-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }

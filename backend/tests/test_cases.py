@@ -28,7 +28,7 @@ def test_create_case_valid(client, admin_headers, institution):
     assert resp.status_code == 201
     body = resp.json()
     assert "case_number" in body
-    assert body["case_number"].startswith("AICTE-C3-")
+    assert body["case_number"].startswith("AICTE-NS-")
     assert body["institution_id"] == institution.id
 
 
@@ -139,6 +139,18 @@ def test_case_list_requires_auth(client):
     assert resp.status_code in (401, 403)
 
 
+def test_case_search_includes_institution_name(client, admin_headers, institution):
+    """Case explorer search can find a case by its institution name."""
+    _create_case(client, admin_headers, institution.id, title="Unrelated wording")
+    resp = client.get(
+        "/api/v1/cases/",
+        params={"q": institution.canonical_name},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
+
+
 # ---------------------------------------------------------------------------
 # Get single case
 # ---------------------------------------------------------------------------
@@ -158,3 +170,33 @@ def test_get_case_not_found(client, admin_headers):
     """GET /cases/99999 returns 404."""
     resp = client.get("/api/v1/cases/99999", headers=admin_headers)
     assert resp.status_code == 404
+
+
+def test_other_bureau_case_is_read_only_for_officer(
+    client, admin_headers, officer_headers, db, institution, officer_user
+):
+    """Officers may view another bureau's file (to avoid duplicate action) but cannot change it."""
+    from app.models.bureau import Bureau
+
+    other_bureau = Bureau(code="ACAD", name="Academic Bureau", is_active=True)
+    db.add(other_bureau)
+    db.commit()
+    response = _create_case(
+        client,
+        admin_headers,
+        institution.id,
+        bureau_id=other_bureau.id,
+        title="Other bureau case",
+    )
+    assert response.status_code == 201
+    case_id = response.json()["id"]
+
+    view = client.get(f"/api/v1/cases/{case_id}", headers=officer_headers)
+    assert view.status_code == 200
+    assert view.json()["can_act"] is False and view.json()["complainant_email"] is None
+    assert client.get(f"/api/v1/cases/{case_id}/timeline", headers=officer_headers).status_code == 200
+    blocked = client.post(f"/api/v1/cases/{case_id}/actions", json={"action_type": "note", "description": "x"},
+                          headers=officer_headers)
+    assert blocked.status_code == 403 and "ACAD" in blocked.json()["detail"]
+    own = client.get(f"/api/v1/cases/{case_id}", headers=admin_headers)
+    assert own.json()["can_act"] is True

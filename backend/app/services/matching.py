@@ -1,5 +1,5 @@
 """
-Baseline case relationship matching service for AICTE C³.
+Baseline case relationship matching service for NYAYA SETU.
 
 Algorithm version: v1.0-baseline
 
@@ -58,6 +58,10 @@ def detect_relationships(case, db: Session) -> List[dict]:
     from app.models.relationship import CaseRelationship, RelationshipType, ReviewStatus
 
     results: List[dict] = []
+
+    # Missing institution identity cannot produce a trustworthy candidate.
+    if not case.institution_id:
+        return results
 
     try:
         # Fetch sibling cases at same institution (exclude self)
@@ -191,6 +195,12 @@ def detect_cross_bureau_relationships(db: Session) -> dict:
     skipped_existing = 0
     errors = 0
 
+    # The current matcher intentionally uses a pairwise, explainable scan so
+    # that differently imported institution records can still be compared by
+    # identifier and canonical-name similarity.  The legacy grouped query is
+    # retained below for reference, but this path is the authoritative one.
+    return _detect_cross_bureau_fuzzy(db)
+
     try:
         # Find institutions with active cases in more than one bureau
         rows = db.execute(
@@ -315,5 +325,139 @@ def detect_cross_bureau_relationships(db: Session) -> dict:
         "new_relationships_created": new_relationships_created,
         "institutions_checked": institutions_checked,
         "skipped_existing": skipped_existing,
+        "errors": errors,
+    }
+
+
+def _detect_cross_bureau_fuzzy(db: Session) -> dict:
+    """Run the explainable cross-bureau matcher without changing source cases."""
+    from rapidfuzz import fuzz
+    from sqlalchemy.orm import joinedload
+    from app.models.case import Case
+    from app.models.institution import InstitutionIdentifier
+    from app.models.relationship import CaseRelationship, RelationshipType, ReviewStatus
+
+    cases = (
+        db.query(Case)
+        .options(joinedload(Case.institution))
+        .filter(Case.is_active == True, Case.bureau_id.isnot(None))
+        .all()
+    )
+    institution_ids = {case.institution_id for case in cases if case.institution_id}
+    identifier_rows = db.query(InstitutionIdentifier).filter(
+        InstitutionIdentifier.institution_id.in_(institution_ids or {-1})
+    ).all()
+    identifier_map = {}
+    for identifier in identifier_rows:
+        key = (
+            identifier.id_type.strip().lower(),
+            re.sub(r"[^a-z0-9]", "", identifier.id_value.lower()),
+        )
+        identifier_map.setdefault(identifier.institution_id, set()).add(key)
+
+    created = 0
+    skipped = 0
+    errors = 0
+    for index, case_a in enumerate(cases):
+        for case_b in cases[index + 1:]:
+            if case_a.bureau_id == case_b.bureau_id:
+                continue
+            existing = db.query(CaseRelationship).filter(
+                ((CaseRelationship.case_a_id == case_a.id) & (CaseRelationship.case_b_id == case_b.id)) |
+                ((CaseRelationship.case_a_id == case_b.id) & (CaseRelationship.case_b_id == case_a.id))
+            ).first()
+            if existing:
+                skipped += 1
+                continue
+
+            name_a = (case_a.institution.canonical_name if case_a.institution else "").strip()
+            name_b = (case_b.institution.canonical_name if case_b.institution else "").strip()
+            name_score = fuzz.token_set_ratio(name_a, name_b) if name_a and name_b else 0
+            shared_ids = sorted(
+                identifier_map.get(case_a.institution_id, set()) &
+                identifier_map.get(case_b.institution_id, set())
+            )
+            same_record = case_a.institution_id == case_b.institution_id
+            if not (same_record or shared_ids or name_score >= 85):
+                continue
+
+            score = 0.0
+            reasons: List[str] = []
+            missing: List[str] = []
+            evidence = {
+                "cross_bureau": True,
+                "institution_name_a": name_a or None,
+                "institution_name_b": name_b or None,
+                "institution_name_similarity": round(name_score / 100, 4),
+                "fuzzy_threshold": 0.85,
+                "shared_identifiers": [f"{kind}:{value}" for kind, value in shared_ids],
+            }
+            if same_record:
+                score += 0.45
+                reasons.append("Same institution record")
+            if shared_ids:
+                score += 0.45
+                reasons.append("Matching institution identifier")
+            if name_score >= 85:
+                score += 0.35
+                reasons.append(f"Institution name similarity: {name_score}/100")
+            if not name_a or not name_b:
+                missing.append("institution_name")
+
+            same_category = bool(
+                case_a.category and case_b.category and
+                case_a.category.strip().casefold() == case_b.category.strip().casefold()
+            )
+            if same_category:
+                score += 0.15
+                reasons.append("Same complaint category")
+                evidence["category_match"] = case_a.category
+            else:
+                missing.append("category_match")
+
+            title_score = (
+                fuzz.token_set_ratio(case_a.title or "", case_b.title or "") / 100
+                if case_a.title and case_b.title else 0
+            )
+            evidence["title_similarity"] = round(title_score, 4)
+            if title_score >= 0.5:
+                score += title_score * 0.2
+                reasons.append(f"Complaint text similarity: {title_score:.2f}")
+            else:
+                missing.append("title_similarity")
+            evidence["missing_identity_fields"] = missing
+
+            final_score = round(min(score, 1.0), 4)
+            if final_score >= 0.8:
+                relationship_type = RelationshipType.POSSIBLE_DUPLICATE
+            elif final_score >= 0.5:
+                relationship_type = RelationshipType.RELATED_COMPLAINT
+            else:
+                relationship_type = RelationshipType.SAME_INSTITUTION_UNRELATED
+            if not reasons:
+                reasons.append("Potential cross-bureau identity match requires review")
+
+            db.add(CaseRelationship(
+                case_a_id=case_a.id,
+                case_b_id=case_b.id,
+                relationship_type=relationship_type,
+                score=final_score,
+                reasons=reasons,
+                matching_evidence=evidence,
+                algorithm_version="v1.2-cross-bureau-explainable",
+                review_status=ReviewStatus.PENDING,
+            ))
+            created += 1
+
+    try:
+        db.commit()
+    except Exception as exc:
+        logger.error("Cross-bureau fuzzy detection failed: %s", exc)
+        db.rollback()
+        errors = 1
+    return {
+        "new_relationships_created": created,
+        "institutions_checked": len(institution_ids),
+        "skipped_existing": skipped,
         "errors": errors,
     }

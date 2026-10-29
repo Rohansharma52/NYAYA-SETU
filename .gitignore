@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/venv/
+backend/uploads/
+*.db
+
+# Node / build
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Local runtime & secrets
+tools/node/
+backend/.env
+.claude_sync/
+
+# Local helper output
+Claude outputs/

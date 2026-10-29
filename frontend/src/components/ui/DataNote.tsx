@@ -1,18 +1,10 @@
-import React from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { FlaskConical } from 'lucide-react'
 
-interface DataNoteProps {
-  message?: string
-}
-
-const DEFAULT_MESSAGE =
-  'DEMO DATA — Synthetic prototype data. Not official AICTE records.'
-
-export function DataNote({ message = DEFAULT_MESSAGE }: DataNoteProps) {
+export function DataNote({ message = 'Demo data — synthetic records for the SIH prototype. Not official AICTE data.' }: { message?: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5">
-      <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-      <span className="text-xs font-medium text-amber-800">{message}</span>
-    </div>
+    <p className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+      <FlaskConical className="h-3 w-3" />
+      {message}
+    </p>
   )
 }

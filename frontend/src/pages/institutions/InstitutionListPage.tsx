@@ -1,138 +1,72 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { Building2 } from 'lucide-react'
-import { PageHeader } from '../../components/layout/PageHeader'
-import { DataNote, SearchBar, Card, Pagination, TableSkeleton, ErrorState, EmptyState, Badge } from '../../components/ui'
+import { useNavigate } from 'react-router-dom'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Building2, MapPin } from 'lucide-react'
 import { listInstitutions } from '../../api/institutions'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { Card, EmptyState, ErrorState, Pagination, SearchBar, Select, SkeletonCard } from '../../components/ui'
+import { useDebounce } from '../../hooks/useData'
+import { REGIONS } from '../../lib/domain'
 
-const LIMIT = 20
+const LIMIT = 24
 
 export default function InstitutionListPage() {
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [region, setRegion] = useState('')
   const [skip, setSkip] = useState(0)
-  const [state, setState] = useState('')
-  const [type, setType] = useState('')
-
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['institutions', skip, search, state, type],
-    queryFn: () =>
-      listInstitutions({
-        skip,
-        limit: LIMIT,
-        search: search || undefined,
-        state: state || undefined,
-        institution_type: type || undefined,
-      }),
+  const ds = useDebounce(search, 300)
+  const q = useQuery({
+    queryKey: ['institutions', ds, region, skip],
+    queryFn: () => listInstitutions({ search: ds || undefined, region: region || undefined, skip, limit: LIMIT }),
+    placeholderData: keepPreviousData,
   })
-
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-
-  const onSearch = (q: string) => {
-    setSearch(q)
-    setSkip(0)
-  }
-
   return (
-    <>
-      <PageHeader title="Institutions" />
-      <DataNote />
-
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[200px]">
-          <SearchBar
-            value={search}
-            onChange={onSearch}
-            placeholder="Search by name or identifier…"
-          />
-        </div>
-        <div>
-          <label htmlFor="state-filter" className="block text-xs font-medium text-gray-500 mb-1">
-            State
-          </label>
-          <input
-            id="state-filter"
-            type="text"
-            value={state}
-            onChange={e => { setState(e.target.value); setSkip(0) }}
-            placeholder="e.g. Maharashtra"
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-        <div>
-          <label htmlFor="type-filter" className="block text-xs font-medium text-gray-500 mb-1">
-            Type
-          </label>
-          <input
-            id="type-filter"
-            type="text"
-            value={type}
-            onChange={e => { setType(e.target.value); setSkip(0) }}
-            placeholder="e.g. Engineering"
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
+    <div>
+      <PageHeader
+        eyebrow="Centralized institution profile"
+        title="Institutions"
+        description="One profile per institution with AICTE Permanent ID, region and the consolidated history of complaints across every Bureau/Cell."
+      />
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+        <SearchBar value={search} onChange={(v) => { setSearch(v); setSkip(0) }} placeholder="Search name, acronym, city…" className="flex-1" />
+        <Select value={region} onChange={(e) => { setRegion(e.target.value); setSkip(0) }} placeholder="All regions" options={REGIONS.map((r) => ({ value: r, label: r }))} wrapperClassName="sm:w-56" />
       </div>
-
-      <div className="mt-4">
-        <Card>
-          {isLoading ? (
-            <TableSkeleton cols={5} />
-          ) : isError ? (
-            <ErrorState message="Failed to load institutions" onRetry={() => refetch()} />
-          ) : items.length === 0 ? (
-            <EmptyState icon={Building2} title="No institutions found" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">State</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">City</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.map(inst => (
-                    <tr key={inst.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Link
-                          to={`/institutions/${inst.id}`}
-                          className="font-medium text-indigo-600 hover:text-indigo-800"
-                        >
-                          {inst.canonical_name}
-                        </Link>
-                        {inst.short_name && (
-                          <span className="ml-2 text-xs text-gray-400">({inst.short_name})</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700">
-                        {inst.institution_type}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700">
-                        {inst.state ?? '—'}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-700">
-                        {inst.city ?? '—'}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Badge color={inst.status === 'active' ? 'green' : 'gray'}>
-                          {inst.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Pagination total={total} skip={skip} limit={LIMIT} onPageChange={setSkip} />
-    </>
+      {q.isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}</div>
+      ) : q.isError ? <ErrorState onRetry={() => q.refetch()} /> : (q.data?.items ?? []).length === 0 ? (
+        <Card><EmptyState icon={Building2} title="No institutions found" /></Card>
+      ) : (
+        <>
+          <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {q.data!.items.map((i) => {
+              const aicte = i.identifiers?.find((x) => x.id_type === 'aicte_permanent_id')?.id_value
+              const open = i.open_cases ?? 0
+              return (
+                <button key={i.id} onClick={() => navigate(`/institutions/${i.id}`)} className="card card-hover group p-5 text-left">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-royal-50 to-white text-sm font-extrabold text-royal-700 ring-1 ring-royal-100">
+                      {(i.short_name ?? i.canonical_name).slice(0, 4)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-sm font-bold leading-snug text-slate-900 group-hover:text-royal-700">{i.canonical_name}</p>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3 w-3" />{[i.city, i.state].filter(Boolean).join(', ')} · {i.region}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+                    <span className="font-mono text-slate-400">{aicte ?? '—'}</span>
+                    <span className="flex gap-3">
+                      <span><b className="text-slate-800">{i.total_cases ?? 0}</b> <span className="text-slate-400">cases</span></span>
+                      <span><b className={open ? 'text-orange-600' : 'text-slate-800'}>{open}</b> <span className="text-slate-400">open</span></span>
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-5"><Pagination total={q.data!.total} skip={skip} limit={LIMIT} onPageChange={setSkip} /></div>
+        </>
+      )}
+    </div>
   )
 }

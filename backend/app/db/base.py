@@ -11,8 +11,4 @@ from app.models.import_job import ImportJob, ImportRow  # noqa
 from app.models.transfer import TransferRequest  # noqa
 from app.models.deadline import DeadlineRule, CaseDeadline  # noqa
 from app.models.deadline_extension import DeadlineExtensionRequest  # noqa
-from app.models.application import Application  # noqa
-from app.models.application_stage import StageHistory  # noqa
-from app.models.evc import EVCTask  # noqa
-from app.models.undertaking import Undertaking  # noqa
-from app.models.document_registry import DocumentRecord  # noqa
+from app.models.attachment import CaseAttachment  # noqa

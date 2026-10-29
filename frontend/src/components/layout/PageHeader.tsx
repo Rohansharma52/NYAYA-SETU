@@ -1,6 +1,7 @@
 import React from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useDocumentTitle } from '../../hooks/useData'
 
 export interface Breadcrumb {
   label: string
@@ -8,44 +9,39 @@ export interface Breadcrumb {
 }
 
 interface PageHeaderProps {
-  title: string
+  title: React.ReactNode
+  docTitle?: string
+  eyebrow?: React.ReactNode
+  description?: React.ReactNode
   breadcrumbs?: Breadcrumb[]
   actions?: React.ReactNode
 }
 
-export function PageHeader({ title, breadcrumbs, actions }: PageHeaderProps) {
+export function PageHeader({ title, docTitle, eyebrow, description, breadcrumbs, actions }: PageHeaderProps) {
+  useDocumentTitle(docTitle ?? (typeof title === 'string' ? title : 'NYAYA SETU'))
   return (
-    <div className="mb-6">
+    <div className="mb-6 animate-fade-up">
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <nav className="flex items-center gap-1 text-sm text-gray-500 mb-2" aria-label="Breadcrumb">
-          {breadcrumbs.map((crumb, idx) => {
-            const isLast = idx === breadcrumbs.length - 1
-            return (
-              <React.Fragment key={idx}>
-                {idx > 0 && (
-                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-400" aria-hidden="true" />
-                )}
-                {crumb.href && !isLast ? (
-                  <Link
-                    to={crumb.href}
-                    className="hover:text-gray-700 hover:underline transition-colors"
-                  >
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span className={isLast ? 'text-gray-700 font-medium' : ''}>{crumb.label}</span>
-                )}
-              </React.Fragment>
-            )
-          })}
+        <nav className="mb-3 flex items-center gap-1 text-xs font-medium text-slate-400" aria-label="Breadcrumb">
+          {breadcrumbs.map((c, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <ChevronRight className="h-3.5 w-3.5" />}
+              {c.href ? (
+                <Link to={c.href} className="transition hover:text-slate-700">{c.label}</Link>
+              ) : (
+                <span className="text-slate-600">{c.label}</span>
+              )}
+            </React.Fragment>
+          ))}
         </nav>
       )}
-
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900 leading-tight">{title}</h1>
-        {actions && (
-          <div className="flex items-center gap-3 flex-shrink-0">{actions}</div>
-        )}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          {eyebrow && <div className="label-eyebrow mb-1.5">{eyebrow}</div>}
+          <h1 className="text-[26px] font-extrabold leading-tight text-slate-900 sm:text-[28px]">{title}</h1>
+          {description && <p className="mt-1.5 max-w-3xl text-sm text-slate-500">{description}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </div>
   )

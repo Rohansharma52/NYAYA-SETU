@@ -1,150 +1,77 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { format } from 'date-fns'
-import { GitBranch, Plus } from 'lucide-react'
-import { PageHeader } from '../../components/layout/PageHeader'
-import {
-  DataNote,
-  Card,
-  Badge,
-  Button,
-  Select,
-  Pagination,
-  TableSkeleton,
-  ErrorState,
-  EmptyState,
-} from '../../components/ui'
-import type { BadgeColor } from '../../components/ui'
+import { CalendarClock, Crown, GitMerge, Plus } from 'lucide-react'
 import { listCoordination } from '../../api/coordination'
-import { CoordinationStatus } from '../../types'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { BureauChip, ButtonLink, Card, EmptyState, ErrorState, Meter, Segmented, SkeletonCard } from '../../components/ui'
+import { useBureaus } from '../../hooks/useData'
+import { daysUntil, fmtDate } from '../../lib/format'
+import { cn } from '../../lib/cn'
+import { COORD_STATUS } from './shared'
 
-const LIMIT = 20
-
-const STATUS_OPTIONS = [
-  { value: '', label: 'All Statuses' },
-  ...Object.values(CoordinationStatus).map(s => ({
-    value: s,
-    label: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-  })),
-]
-
-function coordColor(status: CoordinationStatus): BadgeColor {
-  switch (status) {
-    case CoordinationStatus.draft: return 'gray'
-    case CoordinationStatus.pending_acknowledgement: return 'yellow'
-    case CoordinationStatus.active: return 'indigo'
-    case CoordinationStatus.overdue: return 'red'
-    case CoordinationStatus.resolved: return 'green'
-    case CoordinationStatus.closed: return 'green'
-    default: return 'gray'
-  }
-}
-
-const fmt = (v?: string) => (v ? format(new Date(v), 'dd MMM yyyy') : '—')
+type F = 'open' | 'closed' | 'all'
 
 export default function CoordinationListPage() {
-  const [skip, setSkip] = useState(0)
-  const [status, setStatus] = useState('')
-
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['coordination', skip, status],
-    queryFn: () =>
-      listCoordination({
-        skip,
-        limit: LIMIT,
-        status: status || undefined,
-      }),
-  })
-
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-
+  const navigate = useNavigate()
+  const { byId } = useBureaus()
+  const [f, setF] = useState<F>('open')
+  const q = useQuery({ queryKey: ['coordination'], queryFn: () => listCoordination({ limit: 200 }) })
+  const items = (q.data?.items ?? []).filter((c) => f === 'all' || (f === 'closed' ? ['closed', 'dismissed'].includes(c.status) : !['closed', 'dismissed'].includes(c.status)))
   return (
-    <>
+    <div>
       <PageHeader
+        eyebrow="Coordination Closure Protocol"
         title="Coordination"
-        actions={
-          <Link to="/coordination/new">
-            <Button>
-              <Plus className="h-4 w-4" />
-              New Coordination
-            </Button>
-          </Link>
-        }
+        description="One Institution, One Voice — a lead bureau, supporting bureaus, acknowledgements, follow-up tasks and a recorded closure. Coordination never closes a bureau's own case."
+        actions={<>
+          <Segmented<F> value={f} onChange={setF} options={[{ value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }, { value: 'all', label: 'All' }]} />
+          <ButtonLink to="/coordination/new" leftIcon={<Plus className="h-4 w-4" />}>New coordination</ButtonLink>
+        </>}
       />
-      <DataNote />
-
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <div className="w-52">
-          <Select
-            label="Status"
-            options={STATUS_OPTIONS}
-            value={status}
-            onChange={e => { setStatus(e.target.value); setSkip(0) }}
-          />
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <Card>
-          {isLoading ? (
-            <TableSkeleton cols={6} />
-          ) : isError ? (
-            <ErrorState message="Failed to load coordination items" onRetry={() => refetch()} />
-          ) : items.length === 0 ? (
-            <EmptyState icon={GitBranch} title="No coordination items found" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ref #</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Participants</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.map(item => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Link
-                          to={`/coordination/${item.id}`}
-                          className="font-mono text-xs text-indigo-600 hover:text-indigo-800"
-                        >
-                          {item.reference_number}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-2 max-w-xs truncate text-gray-900">
-                        {item.title}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <Badge color={coordColor(item.status)}>
-                          {item.status.replace(/_/g, ' ')}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-600">
-                        {item.owner?.full_name ?? '—'}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-500">
-                        {fmt(item.action_due_date)}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-600">
-                        {item.participants.length}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Pagination total={total} skip={skip} limit={LIMIT} onPageChange={setSkip} />
-    </>
+      {q.isLoading ? <div className="grid gap-4 lg:grid-cols-2">{[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}</div>
+        : q.isError ? <ErrorState onRetry={() => q.refetch()} />
+          : items.length === 0 ? <Card><EmptyState icon={GitMerge} title="No coordination items" description="Open one from the Overlap Radar with a single click." action={<ButtonLink to="/overlaps" variant="secondary">Go to Overlap Radar</ButtonLink>} /></Card>
+            : (
+              <div className="stagger grid gap-4 lg:grid-cols-2">
+                {items.map((c) => {
+                  const lead = c.lead_bureau_id ? byId.get(c.lead_bureau_id) : undefined
+                  const bureauParts = c.participants.filter((p) => p.bureau_id)
+                  const acked = bureauParts.filter((p) => p.acknowledged).length
+                  const tasksDone = c.tasks.filter((t) => t.is_completed).length
+                  const due = daysUntil(c.action_due_date)
+                  const st = COORD_STATUS[c.status] ?? COORD_STATUS.detected
+                  return (
+                    <button key={c.id} onClick={() => navigate(`/coordination/${c.id}`)} className="card card-hover p-5 text-left">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-[11px] text-slate-400">{c.reference_number}</p>
+                          <p className="mt-0.5 truncate text-[15px] font-bold text-slate-900">{c.title}</p>
+                        </div>
+                        <span className={cn('chip', st.chip)}>{st.label}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        {lead && <span className="chip border-gold-200 bg-gold-50 text-gold-700"><Crown className="h-3 w-3" />Lead {lead.code}</span>}
+                        {bureauParts.filter((p) => p.bureau_id !== c.lead_bureau_id).map((p) => <BureauChip key={p.id} code={byId.get(p.bureau_id!)?.code} />)}
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="mb-1 flex justify-between text-[11px] text-slate-500"><span>Acknowledged</span><b className="text-slate-700">{acked}/{bureauParts.length}</b></p>
+                          <Meter value={acked} max={Math.max(bureauParts.length, 1)} />
+                        </div>
+                        <div>
+                          <p className="mb-1 flex justify-between text-[11px] text-slate-500"><span>Tasks</span><b className="text-slate-700">{tasksDone}/{c.tasks.length}</b></p>
+                          <Meter value={tasksDone} max={Math.max(c.tasks.length, 1)} barClassName="from-emerald-500 to-emerald-400" />
+                        </div>
+                      </div>
+                      <p className={cn('mt-4 flex items-center gap-1.5 text-xs', due !== null && due < 0 && !['closed', 'dismissed'].includes(c.status) ? 'font-semibold text-rose-600' : 'text-slate-500')}>
+                        <CalendarClock className="h-3.5 w-3.5" /> Action due {fmtDate(c.action_due_date)}{due !== null && !['closed', 'dismissed'].includes(c.status) ? ` · ${due < 0 ? `${-due}d overdue` : `${due}d left`}` : ''}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+    </div>
   )
 }

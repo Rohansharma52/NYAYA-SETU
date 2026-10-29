@@ -1,570 +1,169 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format, isPast } from 'date-fns'
-import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Building2, Check, CheckCircle2, Circle, Crown, Gavel, Lock, Plus, ShieldCheck } from 'lucide-react'
+import { acknowledge, addTask, closeCoordination, completeTask, getCoordination, recordDecision } from '../../api/coordination'
+import { apiError } from '../../api/client'
 import { PageHeader } from '../../components/layout/PageHeader'
-import {
-  DataNote,
-  Button,
-  Badge,
-  Modal,
-  Select,
-  Textarea,
-  Input,
-  Card,
-  SkeletonCard,
-  ErrorState,
-  EmptyState,
-} from '../../components/ui'
-import type { BadgeColor } from '../../components/ui'
-import {
-  getCoordination,
-  acknowledge,
-  recordDecision,
-  addTask,
-  completeTask,
-  closeCoordination,
-} from '../../api/coordination'
-import type { DecisionPayload, ClosurePayload } from '../../api/coordination'
-import { listUsers } from '../../api/users'
+import { BureauChip, Button, Card, ErrorState, Input, Modal, PageSkeleton, Select, Textarea } from '../../components/ui'
 import { useAuth } from '../../contexts/AuthContext'
+import { useBureaus } from '../../hooks/useData'
 import { toast } from '../../hooks/useToast'
-import { CoordinationStatus } from '../../types'
+import { daysUntil, fmtDate, fmtDateTime } from '../../lib/format'
+import { cn } from '../../lib/cn'
+import { COORD_STATUS } from './shared'
 
-// ─── helpers ───────────────────────────────────────────────────────────────
-
-const fmt = (v?: string, p = 'dd MMM yyyy') => (v ? format(new Date(v), p) : '—')
-
-function fmtStatus(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-function coordColor(status: CoordinationStatus): BadgeColor {
-  switch (status) {
-    case CoordinationStatus.draft:
-      return 'gray'
-    case CoordinationStatus.pending_acknowledgement:
-      return 'yellow'
-    case CoordinationStatus.active:
-      return 'indigo'
-    case CoordinationStatus.overdue:
-      return 'red'
-    case CoordinationStatus.resolved:
-      return 'green'
-    case CoordinationStatus.closed:
-      return 'green'
-    default:
-      return 'gray'
-  }
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
-      <dt className="text-sm text-gray-500">{label}</dt>
-      <dd className="text-sm text-gray-900 text-right">{children}</dd>
-    </div>
-  )
-}
-
-function OverdueDate({
-  value,
-  status,
-}: {
-  value?: string
-  status: CoordinationStatus
-}) {
-  const overdue = value ? isPast(new Date(value)) : false
-  const showRed =
-    overdue &&
-    status !== CoordinationStatus.closed &&
-    status !== CoordinationStatus.resolved
-  if (showRed) {
-    return (
-      <span className="inline-flex items-center gap-1 text-red-600 font-medium">
-        <AlertTriangle className="h-4 w-4 text-red-500" />
-        {fmt(value)}
-      </span>
-    )
-  }
-  return <>{fmt(value)}</>
-}
-
-// ─── page ───────────────────────────────────────────────────────────────────
+const FLOW = ['detected', 'under_review', 'active', 'acknowledged', 'follow_up', 'closure_review', 'closed']
 
 export default function CoordinationDetailPage() {
   const { id } = useParams()
-  const coordId = Number(id)
+  const cid = Number(id)
+  const qc = useQueryClient()
   const { user, hasRole } = useAuth()
-  const queryClient = useQueryClient()
-
-  const { data: item, isLoading, isError, refetch } = useQuery({
-    queryKey: ['coordination', coordId],
-    queryFn: () => getCoordination(coordId),
-  })
-
-  const { data: usersData } = useQuery({
-    queryKey: ['users', 'limit50'],
-    queryFn: () => listUsers({ limit: 50 }),
-  })
-
-  // ── mutations ──
-  const ackMut = useMutation({
-    mutationFn: () => acknowledge(coordId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coordination', coordId] })
-      toast.success('Acknowledged')
-    },
-    onError: () => toast.error('Failed to acknowledge'),
-  })
-
-  const decisionMut = useMutation({
-    mutationFn: (data: DecisionPayload) => recordDecision(coordId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coordination', coordId] })
-      toast.success('Decision recorded')
-      setShowDecision(false)
-      setRationale('')
-      setDecision('coordinate')
-    },
-    onError: () => toast.error('Failed to record decision'),
-  })
-
-  const addTaskMut = useMutation({
-    mutationFn: (data: Record<string, unknown>) => addTask(coordId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coordination', coordId] })
-      toast.success('Task added')
-      setShowAddTask(false)
-      setTaskTitle('')
-      setTaskDescription('')
-      setTaskDueDate('')
-      setTaskAssigneeId('')
-    },
-    onError: () => toast.error('Failed to add task'),
-  })
-
-  const completeMut = useMutation({
-    mutationFn: ({ taskId }: { taskId: number }) =>
-      completeTask(coordId, taskId, { completion_notes: 'Completed' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coordination', coordId] })
-      toast.success('Task completed')
-    },
-    onError: () => toast.error('Failed to complete task'),
-  })
-
-  const closeMut = useMutation({
-    mutationFn: (data: ClosurePayload) => closeCoordination(coordId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coordination', coordId] })
-      toast.success('Coordination closed')
-      setShowClose(false)
-      setClosureNotes('')
-      setIsException(false)
-      setExceptionReason('')
-    },
-    onError: () => toast.error('Failed to close coordination'),
-  })
-
-  // ── modal state ──
-  const [showDecision, setShowDecision] = useState(false)
-  const [decision, setDecision] = useState('coordinate')
-  const [rationale, setRationale] = useState('')
-
-  const [showAddTask, setShowAddTask] = useState(false)
+  const { byId } = useBureaus()
   const [taskTitle, setTaskTitle] = useState('')
-  const [taskDescription, setTaskDescription] = useState('')
-  const [taskDueDate, setTaskDueDate] = useState('')
-  const [taskAssigneeId, setTaskAssigneeId] = useState('')
+  const [closeOpen, setCloseOpen] = useState(false)
+  const [decisionOpen, setDecisionOpen] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [exception, setException] = useState(false)
+  const [decision, setDecision] = useState('coordinate')
+  const q = useQuery({ queryKey: ['coordination', cid], queryFn: () => getCoordination(cid) })
+  const refresh = (msg: string) => { toast.success(msg); qc.invalidateQueries({ queryKey: ['coordination'] }) }
+  const fail = (e: unknown) => toast.error(apiError(e))
+  const ackM = useMutation({ mutationFn: () => acknowledge(cid), onSuccess: () => refresh('Acknowledged on behalf of your bureau'), onError: fail })
+  const taskM = useMutation({ mutationFn: () => addTask(cid, { title: taskTitle }), onSuccess: () => { setTaskTitle(''); refresh('Task added') }, onError: fail })
+  const doneM = useMutation({ mutationFn: (tid: number) => completeTask(cid, tid), onSuccess: () => refresh('Task completed'), onError: fail })
+  const closeM = useMutation({ mutationFn: () => closeCoordination(cid, { closure_notes: notes, is_exception: exception, exception_reason: exception ? notes : undefined }), onSuccess: () => { setCloseOpen(false); refresh('Coordination closed') }, onError: fail })
+  const decM = useMutation({ mutationFn: () => recordDecision(cid, { decision, rationale: notes }), onSuccess: () => { setDecisionOpen(false); refresh('Decision recorded') }, onError: fail })
 
-  const [showClose, setShowClose] = useState(false)
-  const [closureNotes, setClosureNotes] = useState('')
-  const [isException, setIsException] = useState(false)
-  const [exceptionReason, setExceptionReason] = useState('')
-
-  // ── loading / error ──
-  if (isLoading) {
-    return (
-      <>
-        <PageHeader
-          title="Coordination Details"
-          breadcrumbs={[
-            { label: 'Coordination', href: '/coordination' },
-            { label: 'Loading…' },
-          ]}
-        />
-        <DataNote />
-        <div className="mt-4">
-          <SkeletonCard />
-        </div>
-        <div className="mt-4">
-          <SkeletonCard />
-        </div>
-      </>
-    )
-  }
-
-  if (isError || !item) {
-    return (
-      <>
-        <PageHeader
-          title="Coordination Details"
-          breadcrumbs={[{ label: 'Coordination', href: '/coordination' }]}
-        />
-        <DataNote />
-        <div className="mt-4">
-          <ErrorState
-            message="Failed to load coordination"
-            onRetry={() => refetch()}
-          />
-        </div>
-      </>
-    )
-  }
-
-  const canDecision =
-    (item.status === CoordinationStatus.draft ||
-      item.status === CoordinationStatus.pending_acknowledgement) &&
-    hasRole(['coordination_reviewer', 'system_admin'])
-  const canAddTask =
-    item.status === CoordinationStatus.active ||
-    item.status === CoordinationStatus.overdue
-  const canClose =
-    hasRole(['coordination_reviewer', 'system_admin']) &&
-    item.status !== CoordinationStatus.closed
+  if (q.isLoading) return <PageSkeleton />
+  if (q.isError || !q.data) return <ErrorState onRetry={() => q.refetch()} />
+  const c = q.data
+  const st = COORD_STATUS[c.status] ?? COORD_STATUS.detected
+  const closed = ['closed', 'dismissed'].includes(c.status)
+  const idx = FLOW.indexOf(c.status)
+  const lead = c.lead_bureau_id ? byId.get(c.lead_bureau_id) : undefined
+  const myPart = c.participants.find((p) => p.user_id === user?.id || (p.bureau_id && p.bureau_id === user?.bureau_id))
+  const due = daysUntil(c.action_due_date)
+  const pendingAcks = c.participants.filter((p) => !p.acknowledged).length
+  const openTasks = c.tasks.filter((t) => !t.is_completed).length
 
   return (
-    <>
+    <div>
       <PageHeader
-        title={`${item.reference_number} — ${item.title}`}
-        breadcrumbs={[
-          { label: 'Coordination', href: '/coordination' },
-          { label: item.reference_number },
-        ]}
+        docTitle={c.reference_number}
+        breadcrumbs={[{ label: 'Coordination', href: '/coordination' }, { label: c.reference_number }]}
+        eyebrow={<span className="font-mono normal-case tracking-normal">{c.reference_number}</span>}
+        title={c.title}
+        description={<span className="flex flex-wrap items-center gap-2"><span className={cn('chip', st.chip)}>{st.label}</span>{c.institution_id && <Link className="inline-flex items-center gap-1 font-semibold text-royal-600 hover:underline" to={`/institutions/${c.institution_id}`}><Building2 className="h-3.5 w-3.5" />Institution 360°</Link>}</span>}
+        actions={!closed && <>
+          {myPart && !myPart.acknowledged && <Button variant="success" leftIcon={<Check className="h-4 w-4" />} loading={ackM.isPending} onClick={() => ackM.mutate()}>Acknowledge</Button>}
+          {hasRole(['coordination_reviewer', 'system_admin', 'senior_management']) && <Button variant="secondary" leftIcon={<Gavel className="h-4 w-4" />} onClick={() => setDecisionOpen(true)}>Record decision</Button>}
+          {hasRole(['coordination_reviewer', 'system_admin']) && <Button variant="dark" leftIcon={<Lock className="h-4 w-4" />} onClick={() => setCloseOpen(true)}>Close</Button>}
+        </>}
       />
-      <DataNote />
 
-      {/* prominent status */}
-      <div className="mt-4">
-        <Badge color={coordColor(item.status)} size="md">
-          {fmtStatus(item.status)}
-        </Badge>
+      <div className="card mb-6 overflow-x-auto p-5">
+        <ol className="flex min-w-[720px] items-center">
+          {FLOW.map((s, i) => (
+            <li key={s} className="flex flex-1 items-center last:flex-none">
+              <div className="flex flex-col items-center gap-1.5">
+                <span className={cn('flex h-8 w-8 items-center justify-center rounded-full border-2 text-[11px] font-bold',
+                  i < idx || c.status === 'closed' ? 'border-emerald-500 bg-emerald-500 text-white' : i === idx ? 'border-royal-500 bg-royal-500 text-white shadow-[0_0_0_6px_rgba(91,102,236,.15)]' : 'border-slate-200 text-slate-400')}>
+                  {i < idx || c.status === 'closed' ? <Check className="h-4 w-4" /> : i + 1}
+                </span>
+                <span className={cn('whitespace-nowrap text-[11px] font-semibold', i === idx ? 'text-slate-900' : 'text-slate-400')}>{COORD_STATUS[s].label}</span>
+              </div>
+              {i < FLOW.length - 1 && <span className={cn('mx-2 mb-5 h-0.5 flex-1 rounded-full', i < idx ? 'bg-emerald-400' : 'bg-slate-200')} />}
+            </li>
+          ))}
+        </ol>
       </div>
 
-      {/* amber warning */}
-      <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-        Closing this coordination item does NOT affect the status or ownership
-        of underlying complaint cases.
-      </div>
-
-      {/* Section 1 — Overview */}
-      <div className="mt-4">
-        <Card title="Overview">
-          <dl>
-            <Row label="Status">
-              <Badge color={coordColor(item.status)}>{fmtStatus(item.status)}</Badge>
-            </Row>
-            <Row label="Decision">{item.decision ?? '—'}</Row>
-            <Row label="Owner">{item.owner?.full_name ?? '—'}</Row>
-            <Row label="Created">{fmt(item.created_at, 'dd MMM yyyy')}</Row>
-            <Row label="Acknowledge By">
-              <OverdueDate value={item.acknowledge_by} status={item.status} />
-            </Row>
-            <Row label="Action Due Date">
-              <OverdueDate value={item.action_due_date} status={item.status} />
-            </Row>
-          </dl>
-        </Card>
-      </div>
-
-      {/* Section 2 — Participants */}
-      <div className="mt-4">
-        <Card title={`Participants (${item.participants.length})`}>
-          {item.participants.length === 0 ? (
-            <EmptyState title="No participants" />
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {item.participants.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {p.bureau?.name ?? p.user?.full_name ?? '—'}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {p.role_in_coordination}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {p.acknowledged ? (
-                      <Badge color="green">Acknowledged</Badge>
-                    ) : (
-                      <Badge color="red">Pending</Badge>
-                    )}
-                    {p.user?.id === user?.id && !p.acknowledged && (
-                      <Button
-                        size="sm"
-                        onClick={() => ackMut.mutate()}
-                        loading={ackMut.isPending}
-                      >
-                        Acknowledge
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              ))}
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr] [&>*]:min-w-0">
+        <div className="space-y-6">
+          {c.description && (
+            <Card title="Context">
+              <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{c.description}</p>
+              {c.decision_rationale && <p className="mt-4 rounded-xl bg-gold-50 p-3 text-[13px] text-gold-900"><b>Decision rationale:</b> {c.decision_rationale}</p>}
+            </Card>
+          )}
+          <Card title="Follow-up tasks" subtitle={`${c.tasks.filter((t) => t.is_completed).length} of ${c.tasks.length} complete`} icon={<ShieldCheck className="h-5 w-5" />}>
+            <ul className="space-y-2">
+              {c.tasks.map((t) => {
+                const d = daysUntil(t.due_date)
+                return (
+                  <li key={t.id} className={cn('flex items-center gap-3 rounded-xl border p-3 transition', t.is_completed ? 'border-emerald-100 bg-emerald-50/40' : 'border-slate-200')}>
+                    <button disabled={t.is_completed || closed} onClick={() => doneM.mutate(t.id)} aria-label="Mark complete" className="shrink-0">
+                      {t.is_completed ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <Circle className="h-5 w-5 text-slate-300 hover:text-royal-500" />}
+                    </button>
+                    <span className={cn('flex-1 text-sm', t.is_completed ? 'text-slate-400 line-through' : 'font-medium text-slate-800')}>{t.title}</span>
+                    <span className={cn('text-xs', !t.is_completed && d !== null && d < 0 ? 'font-semibold text-rose-600' : 'text-slate-400')}>{t.is_completed ? fmtDate(t.completed_at) : fmtDate(t.due_date)}</span>
+                  </li>
+                )
+              })}
             </ul>
-          )}
-        </Card>
-      </div>
-
-      {/* Section 3 — Tasks */}
-      <div className="mt-4">
-        <Card title={`Tasks (${item.tasks.length})`}>
-          {item.tasks.length === 0 ? (
-            <EmptyState title="No tasks" />
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {item.tasks.map((task) => (
-                <li
-                  key={task.id}
-                  className="flex items-center justify-between gap-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {task.title}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {task.assigned_to?.full_name ?? 'Unassigned'} · Due{' '}
-                      {fmt(task.due_date)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {task.is_completed ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-gray-300" />
-                    )}
-                    {!task.is_completed && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => completeMut.mutate({ taskId: task.id })}
-                        loading={completeMut.isPending}
-                      >
-                        Complete
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      {/* Action bar (role / status gated) */}
-      {(canDecision || canAddTask || canClose) && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          {canDecision && (
-            <Button onClick={() => setShowDecision(true)}>Record Decision</Button>
-          )}
-          {canAddTask && (
-            <Button variant="secondary" onClick={() => setShowAddTask(true)}>
-              Add Task
-            </Button>
-          )}
-          {canClose && (
-            <Button variant="danger" onClick={() => setShowClose(true)}>
-              Close Coordination
-            </Button>
-          )}
+            {!closed && (
+              <div className="mt-4 flex gap-2">
+                <Input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Add a follow-up task" wrapperClassName="flex-1" />
+                <Button variant="secondary" disabled={!taskTitle.trim()} loading={taskM.isPending} onClick={() => taskM.mutate()} leftIcon={<Plus className="h-4 w-4" />}>Add</Button>
+              </div>
+            )}
+          </Card>
+          {c.closure_notes && <Card title="Closure"><p className="text-sm text-slate-700">{c.closure_notes}</p>{c.is_exception_closure && <p className="mt-2 text-xs font-semibold text-amber-700">Closed by exception</p>}</Card>}
         </div>
-      )}
 
-      {/* ── Decision modal ── */}
-      <Modal
-        isOpen={showDecision}
-        onClose={() => setShowDecision(false)}
-        title="Record Decision"
-        size="md"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!rationale) return
-            decisionMut.mutate({ decision, rationale })
-          }}
-          className="space-y-4"
-        >
-          <Select
-            label="Decision"
-            required
-            value={decision}
-            onChange={(e) => setDecision(e.target.value)}
-            options={[
-              { value: 'coordinate', label: 'Coordinate' },
-              { value: 'link_related', label: 'Link Related' },
-              { value: 'keep_separate', label: 'Keep Separate' },
-              { value: 'dismiss', label: 'Dismiss' },
-              { value: 'escalate', label: 'Escalate' },
-            ]}
-          />
-          <Textarea
-            label="Rationale"
-            required
-            value={rationale}
-            onChange={(e) => setRationale(e.target.value)}
-            error={!rationale ? 'Rationale is required' : undefined}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => setShowDecision(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={decisionMut.isPending} disabled={!rationale}>
-              Record
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        <div className="space-y-6">
+          <Card title="Participants" subtitle="Lead speaks for AICTE; supporting bureaus feed the lead">
+            <ul className="space-y-2.5">
+              {c.participants.map((p) => {
+                const b = p.bureau_id ? byId.get(p.bureau_id) : undefined
+                const isLead = p.role_in_coordination === 'lead' || (lead && p.bureau_id === lead.id)
+                return (
+                  <li key={p.id} className={cn('flex items-center gap-3 rounded-xl p-3', isLead ? 'bg-gradient-to-r from-gold-50 to-white ring-1 ring-gold-200' : 'bg-slate-50')}>
+                    {b ? <BureauChip code={b.code} /> : <span className="chip border-slate-200 bg-white text-slate-600">Officer #{p.user_id}</span>}
+                    <span className="flex-1 truncate text-[13px] text-slate-600">{b?.name ?? p.role_in_coordination}</span>
+                    {isLead && <span className="chip border-gold-200 bg-white text-gold-700"><Crown className="h-3 w-3" />Lead</span>}
+                    {p.acknowledged ? <span className="chip border-emerald-200 bg-emerald-50 text-emerald-700"><Check className="h-3 w-3" />Ack</span> : <span className="chip border-amber-200 bg-amber-50 text-amber-700">Pending</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
+          <Card title="Timelines">
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between"><dt className="text-slate-500">Acknowledge by</dt><dd className="font-semibold">{fmtDate(c.acknowledge_by)}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Action due</dt><dd className={cn('font-semibold', due !== null && due < 0 && !closed && 'text-rose-600')}>{fmtDate(c.action_due_date)}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Opened</dt><dd>{fmtDateTime(c.created_at)}</dd></div>
+            </dl>
+          </Card>
+        </div>
+      </div>
 
-      {/* ── Add task modal ── */}
-      <Modal
-        isOpen={showAddTask}
-        onClose={() => setShowAddTask(false)}
-        title="Add Task"
-        size="md"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!taskTitle) return
-            addTaskMut.mutate({
-              title: taskTitle,
-              description: taskDescription || undefined,
-              due_date: taskDueDate || undefined,
-              assigned_to_id: taskAssigneeId ? Number(taskAssigneeId) : undefined,
-            })
-          }}
-          className="space-y-4"
-        >
-          <Input
-            label="Title"
-            required
-            value={taskTitle}
-            onChange={(e) => setTaskTitle(e.target.value)}
-            error={!taskTitle ? 'Required' : undefined}
-          />
-          <Textarea
-            label="Description"
-            value={taskDescription}
-            onChange={(e) => setTaskDescription(e.target.value)}
-          />
-          <div className="w-full">
-            <label
-              htmlFor="add-task-due-date"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Due Date
-            </label>
-            <input
-              id="add-task-due-date"
-              type="datetime-local"
-              value={taskDueDate}
-              onChange={(e) => setTaskDueDate(e.target.value)}
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
-          <Select
-            label="Assignee"
-            value={taskAssigneeId}
-            onChange={(e) => setTaskAssigneeId(e.target.value)}
-            options={[
-              { value: '', label: 'Unassigned' },
-              ...(usersData?.items ?? []).map((u) => ({
-                value: String(u.id),
-                label: u.full_name,
-              })),
-            ]}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => setShowAddTask(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={addTaskMut.isPending} disabled={!taskTitle}>
-              Add Task
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Close modal ── */}
-      <Modal
-        isOpen={showClose}
-        onClose={() => setShowClose(false)}
-        title="Close Coordination"
-        size="md"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!closureNotes) return
-            closeMut.mutate({
-              closure_notes: closureNotes,
-              is_exception: isException,
-              ...(isException ? { exception_reason: exceptionReason } : {}),
-            } as ClosurePayload)
-          }}
-          className="space-y-4"
-        >
-          <Textarea
-            label="Closure Notes"
-            required
-            value={closureNotes}
-            onChange={(e) => setClosureNotes(e.target.value)}
-            error={!closureNotes ? 'Required' : undefined}
-          />
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={isException}
-              onChange={(e) => setIsException(e.target.checked)}
-            />
-            Exception closure
-          </label>
-          {isException && (
-            <Textarea
-              label="Exception Reason"
-              value={exceptionReason}
-              onChange={(e) => setExceptionReason(e.target.value)}
-            />
+      <Modal isOpen={closeOpen} onClose={() => setCloseOpen(false)} title="Close coordination" description="Closing coordination never closes a bureau's own case — each bureau closes its file with a cross-reference."
+        footer={<><Button variant="secondary" onClick={() => setCloseOpen(false)}>Cancel</Button><Button variant="dark" disabled={!notes.trim() || (pendingAcks > 0 && !exception)} loading={closeM.isPending} onClick={() => closeM.mutate()}>Close coordination</Button></>}>
+        <div className="space-y-3">
+          {(pendingAcks > 0 || openTasks > 0) && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">
+              {pendingAcks > 0 && <>{pendingAcks} bureau{pendingAcks > 1 ? 's have' : ' has'} not acknowledged yet. </>}
+              {openTasks > 0 && <>{openTasks} follow-up task{openTasks > 1 ? 's are' : ' is'} still open. </>}
+              {pendingAcks > 0 && 'Tick exception closure to proceed — it is recorded in the audit trail.'}
+            </p>
           )}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => setShowClose(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={closeMut.isPending} disabled={!closureNotes}>
-              Close Coordination
-            </Button>
-          </div>
-        </form>
+          <Textarea label="Closure notes" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={exception} onChange={(e) => setException(e.target.checked)} className="rounded border-slate-300" />Exception closure (some acknowledgements pending)</label>
+        </div>
       </Modal>
-    </>
+      <Modal isOpen={decisionOpen} onClose={() => setDecisionOpen(false)} title="Record coordination decision"
+        footer={<><Button variant="secondary" onClick={() => setDecisionOpen(false)}>Cancel</Button><Button loading={decM.isPending} onClick={() => decM.mutate()}>Save decision</Button></>}>
+        <div className="space-y-3">
+          <Select label="Decision" value={decision} onChange={(e) => setDecision(e.target.value)} options={[
+            { value: 'coordinate', label: 'Coordinate under lead bureau' }, { value: 'link_related', label: 'Link as related, act separately' },
+            { value: 'keep_separate', label: 'Keep separate' }, { value: 'escalate', label: 'Escalate to competent authority' }, { value: 'dismiss', label: 'Dismiss' },
+          ]} />
+          <Textarea label="Rationale" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+      </Modal>
+    </div>
   )
 }

@@ -1,157 +1,56 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { signup } from '../../api/auth'
+import { Link } from 'react-router-dom'
+import { CheckCircle2 } from 'lucide-react'
 import { AuthLayout } from '../../components/layout/AuthLayout'
+import { apiClient, apiError } from '../../api/client'
+
+const field = 'h-11 w-full rounded-xl border border-white/10 bg-white/[.06] px-3.5 text-sm text-white placeholder:text-white/30 focus:border-gold-300/60 focus:outline-none focus:ring-4 focus:ring-gold-400/15'
 
 export default function SignupPage() {
-  const navigate = useNavigate()
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [designation, setDesignation] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [form, setForm] = useState({ full_name: '', email: '', designation: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
-
-  const onSubmit = async (e: React.FormEvent) => {
+  const up = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    if (password !== confirm) {
-      setError('Passwords do not match.')
-      return
-    }
-    setLoading(true)
+    if (form.password.length < 8) return setError('Password must be at least 8 characters')
+    if (form.password !== form.confirm) return setError('Passwords do not match')
+    setLoading(true); setError(null)
     try {
-      await signup({ email, full_name: fullName, password, designation: designation || undefined })
+      await apiClient.post('/auth/signup', { full_name: form.full_name, email: form.email, designation: form.designation || undefined, password: form.password })
       setDone(true)
-    } catch {
-      setError('Registration failed. The email may already be in use.')
-    } finally {
-      setLoading(false)
-    }
+    } catch (err) { setError(apiError(err, 'Sign-up failed')) } finally { setLoading(false) }
   }
-
-  if (done) {
-    return (
-      <AuthLayout>
-        <div className="text-center space-y-3">
-          <div className="text-green-600 text-4xl">✓</div>
-          <h2 className="text-xl font-semibold text-gray-900">Request submitted</h2>
-          <p className="text-sm text-gray-600">
-            Your account is pending approval by an administrator. You will receive
-            access once your request is reviewed.
-          </p>
-          <button
-            onClick={() => navigate('/login', { replace: true })}
-            className="mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-500"
-          >
-            Back to login
-          </button>
-        </div>
-      </AuthLayout>
-    )
-  }
-
   return (
     <AuthLayout>
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Request access</h2>
-
-      {error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={onSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="full_name" className="block text-sm font-medium text-gray-700 mb-1">
-            Full name
-          </label>
-          <input
-            id="full_name"
-            type="text"
-            required
-            value={fullName}
-            onChange={e => setFullName(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="designation" className="block text-sm font-medium text-gray-700 mb-1">
-            Designation <span className="text-gray-400">(optional)</span>
-          </label>
-          <input
-            id="designation"
-            type="text"
-            value={designation}
-            onChange={e => setDesignation(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            minLength={8}
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="confirm" className="block text-sm font-medium text-gray-700 mb-1">
-            Confirm password
-          </label>
-          <input
-            id="confirm"
-            type="password"
-            required
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full flex justify-center items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-          )}
-          {loading ? 'Submitting…' : 'Request access'}
-        </button>
-      </form>
-
-      <p className="mt-5 text-center text-sm text-gray-500">
-        Already have an account?{' '}
-        <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-          Sign in
-        </Link>
-      </p>
+      <div className="glass ring-gradient rounded-3xl p-7 sm:p-8">
+        {done ? (
+          <div className="py-6 text-center">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-400" />
+            <h1 className="mt-4 text-xl font-extrabold text-white">Request submitted</h1>
+            <p className="mt-2 text-sm text-white/60">A system administrator will verify your role and bureau before activating the account.</p>
+            <Link to="/login" className="mt-6 inline-block text-sm font-semibold text-gold-300">Back to sign in →</Link>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-[24px] font-extrabold text-white">Request access</h1>
+            <p className="mt-1 text-sm text-white/55">For AICTE officials. Accounts are activated after verification.</p>
+            <form onSubmit={submit} className="mt-6 space-y-3.5">
+              <input className={field} placeholder="Full name" value={form.full_name} onChange={up('full_name')} required />
+              <input className={field} type="email" placeholder="Official e-mail" value={form.email} onChange={up('email')} required />
+              <input className={field} placeholder="Designation (optional)" value={form.designation} onChange={up('designation')} />
+              <div className="grid grid-cols-2 gap-3">
+                <input className={field} type="password" placeholder="Password" value={form.password} onChange={up('password')} required />
+                <input className={field} type="password" placeholder="Confirm" value={form.confirm} onChange={up('confirm')} required />
+              </div>
+              {error && <p className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-[13px] text-rose-200">{error}</p>}
+              <button disabled={loading} className="h-12 w-full rounded-xl bg-gradient-to-r from-gold-300 via-gold-400 to-gold-500 font-bold text-ink-900 shadow-glow-gold transition hover:brightness-105 disabled:opacity-60">{loading ? 'Submitting…' : 'Submit request'}</button>
+            </form>
+            <p className="mt-6 text-center text-[13px] text-white/45">Already have access? <Link to="/login" className="font-semibold text-gold-300">Sign in</Link></p>
+          </>
+        )}
+      </div>
     </AuthLayout>
   )
 }

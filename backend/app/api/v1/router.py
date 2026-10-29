@@ -14,11 +14,9 @@ from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.imports import router as imports_router
 from app.api.v1.endpoints.audit import router as audit_router
 from app.api.v1.endpoints.deadline_extensions import router as deadline_ext_router
-from app.api.v1.endpoints.applications import router as applications_router
-from app.api.v1.endpoints.evc import router as evc_router
-from app.api.v1.endpoints.undertakings import router as undertakings_router
-from app.api.v1.endpoints.documents import router as documents_router
-from app.api.v1.endpoints.deadline_intelligence import router as deadline_intel_router
+from app.api.v1.endpoints.intelligence import router as intelligence_router
+from app.api.v1.endpoints.performance import router as performance_router
+from app.api.v1.endpoints.transfers import router as transfers_router
 
 api_router = APIRouter()
 
@@ -35,8 +33,6 @@ api_router.include_router(analytics_router)
 api_router.include_router(reports_router)
 api_router.include_router(imports_router)
 api_router.include_router(audit_router)
-api_router.include_router(applications_router)
-api_router.include_router(evc_router)
-api_router.include_router(undertakings_router)
-api_router.include_router(documents_router)
-api_router.include_router(deadline_intel_router)
+api_router.include_router(intelligence_router)
+api_router.include_router(performance_router)
+api_router.include_router(transfers_router)

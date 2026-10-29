@@ -1,5 +1,5 @@
 {
-  "name": "aicte-c3-frontend",
+  "name": "nyaya-setu-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -22,7 +22,11 @@
     "lucide-react": "^0.469.0",
     "date-fns": "^4.1.0",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.5"
+    "tailwind-merge": "^2.5.5",
+    "@fontsource/cinzel": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.1",
+    "@fontsource/noto-serif-devanagari": "^5.1.0",
+    "@fontsource/plus-jakarta-sans": "^5.1.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

@@ -1,40 +1,19 @@
 import { apiClient } from './client'
 import type { Notification, PaginatedResponse } from '../types'
 
-export interface ListNotificationsParams {
-  skip?: number
-  limit?: number
-  unread_only?: boolean
+export async function listNotifications(params: { skip?: number; limit?: number; unread_only?: boolean } = {}): Promise<PaginatedResponse<Notification>> {
+  return (await apiClient.get<PaginatedResponse<Notification>>('/notifications/', { params })).data
 }
 
-export interface UnreadCountResponse {
-  count: number
+export async function getUnreadCount(): Promise<{ count: number }> {
+  const data = (await apiClient.get('/notifications/unread-count')).data as { count?: number; unread_count?: number }
+  return { count: data.count ?? data.unread_count ?? 0 }
 }
 
-/** GET /notifications/ */
-export async function listNotifications(
-  params?: ListNotificationsParams
-): Promise<PaginatedResponse<Notification>> {
-  const res = await apiClient.get<PaginatedResponse<Notification>>('/notifications/', {
-    params,
-  })
-  return res.data
+export async function markRead(id: number) {
+  return (await apiClient.post(`/notifications/${id}/read`)).data
 }
 
-/** GET /notifications/unread-count */
-export async function getUnreadCount(): Promise<UnreadCountResponse> {
-  const res = await apiClient.get<UnreadCountResponse>('/notifications/unread-count')
-  return res.data
-}
-
-/** POST /notifications/:id/read */
-export async function markRead(id: number): Promise<Notification> {
-  const res = await apiClient.post<Notification>(`/notifications/${id}/read`)
-  return res.data
-}
-
-/** POST /notifications/read-all */
-export async function markAllRead(): Promise<{ updated: number }> {
-  const res = await apiClient.post<{ updated: number }>('/notifications/read-all')
-  return res.data
+export async function markAllRead() {
+  return (await apiClient.post('/notifications/read-all')).data
 }

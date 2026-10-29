@@ -1,0 +1,6 @@
+node_modules
+dist
+.agents
+*.log
+build-out.txt
+tsc_result.txt

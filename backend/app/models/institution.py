@@ -41,7 +41,6 @@ class Institution(Base):
     # Relationships
     identifiers = relationship("InstitutionIdentifier", back_populates="institution", cascade="all, delete-orphan")
     cases = relationship("Case", back_populates="institution", lazy="dynamic")
-    applications = relationship("Application", back_populates="institution", lazy="dynamic")
 
 
 class InstitutionIdentifier(Base):

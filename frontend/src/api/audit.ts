@@ -3,28 +3,16 @@ import type { PaginatedResponse } from '../types'
 
 export interface AuditEvent {
   id: number
-  user_id?: number
-  user?: { id: number; full_name: string; email: string }
+  user_id?: number | null
+  user_name?: string | null
   action: string
   resource_type: string
-  resource_id?: number
-  detail?: Record<string, unknown>
-  ip_address?: string
+  resource_id?: number | null
+  description?: string | null
   created_at: string
 }
 
-export interface ListAuditParams {
-  skip?: number
-  limit?: number
-  resource_type?: string
-  action?: string
-  user_id?: number
-}
-
-/** GET /audit/ */
-export async function listAudit(
-  params?: ListAuditParams
-): Promise<PaginatedResponse<AuditEvent>> {
-  const res = await apiClient.get<PaginatedResponse<AuditEvent>>('/audit/', { params })
-  return res.data
+export async function listAudit(params: { skip?: number; limit?: number; resource_type?: string; action?: string } = {}): Promise<PaginatedResponse<AuditEvent>> {
+  const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined))
+  return (await apiClient.get<PaginatedResponse<AuditEvent>>('/audit/', { params: clean })).data
 }

@@ -1,0 +1,13 @@
+# One-click deploy on Render (free plan): Dashboard → New → Blueprint → select this repo.
+services:
+  - type: web
+    name: nyaya-setu
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALERT_SCAN_ENABLED
+        value: "true"

@@ -74,7 +74,7 @@ def upgrade():
                 'submitted', 'scrutiny', 'deficiency_raised', 'deficiency_rectified',
                 'evc_eligible', 'evc_scheduled', 'evc_completed', 'sac_shc',
                 'approved', 'rejected', 'withdrawn',
-                name='applicationstage',
+                name='applicationstage', create_type=False,
             ),
             nullable=True,
         ),
@@ -84,7 +84,7 @@ def upgrade():
                 'submitted', 'scrutiny', 'deficiency_raised', 'deficiency_rectified',
                 'evc_eligible', 'evc_scheduled', 'evc_completed', 'sac_shc',
                 'approved', 'rejected', 'withdrawn',
-                name='applicationstage',
+                name='applicationstage', create_type=False,
             ),
             nullable=False,
         ),
@@ -233,3 +233,10 @@ def downgrade():
     op.drop_index('ix_applications_application_number', table_name='applications')
     op.drop_index('ix_applications_id', table_name='applications')
     op.drop_table('applications')
+
+    # Drop named enum types (PostgreSQL keeps them after table drop)
+    op.execute('DROP TYPE IF EXISTS applicationstage')
+    op.execute('DROP TYPE IF EXISTS applicationtype')
+    op.execute('DROP TYPE IF EXISTS evcstatus')
+    op.execute('DROP TYPE IF EXISTS undertakingstatus')
+    op.execute('DROP TYPE IF EXISTS documentcategory')

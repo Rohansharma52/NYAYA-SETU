@@ -1,26 +1,17 @@
-import React from 'react'
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { RefreshCw, WifiOff } from 'lucide-react'
 import { Button } from './Button'
 
-interface ErrorStateProps {
-  message?: string
-  onRetry?: () => void
-}
-
-export function ErrorState({
-  message = 'Something went wrong. Please try again.',
-  onRetry,
-}: ErrorStateProps) {
+export function ErrorState({ message = 'We could not load this data. Check that the API server is running.', onRetry }: { message?: string; onRetry?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className="mb-4 rounded-full bg-red-100 p-4">
-        <AlertCircle className="h-8 w-8 text-red-500" />
+    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100">
+        <WifiOff className="h-6 w-6" />
       </div>
-      <p className="text-sm text-gray-700 mb-4 max-w-sm">{message}</p>
+      <h3 className="text-base font-bold text-slate-900">Something went wrong</h3>
+      <p className="mt-1 max-w-sm text-sm text-slate-500">{message}</p>
       {onRetry && (
-        <Button variant="secondary" size="sm" onClick={onRetry}>
-          <RefreshCw className="h-4 w-4" />
-          Retry
+        <Button variant="secondary" size="sm" className="mt-5" leftIcon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onRetry}>
+          Try again
         </Button>
       )}
     </div>

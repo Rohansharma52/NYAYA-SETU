@@ -6,28 +6,16 @@ export interface ListInstitutionsParams {
   limit?: number
   search?: string
   state?: string
-  institution_type?: string
   region?: string
+  institution_type?: string
 }
 
-/** GET /institutions/ */
-export async function listInstitutions(
-  params?: ListInstitutionsParams
-): Promise<PaginatedResponse<Institution>> {
-  const res = await apiClient.get<PaginatedResponse<Institution>>('/institutions/', { params })
-  return res.data
+export async function listInstitutions(params: ListInstitutionsParams = {}): Promise<PaginatedResponse<Institution>> {
+  const { search, ...rest } = params
+  const clean = Object.fromEntries(Object.entries({ ...rest, q: search }).filter(([, v]) => v !== '' && v !== undefined))
+  return (await apiClient.get<PaginatedResponse<Institution>>('/institutions/', { params: clean })).data
 }
 
-/** GET /institutions/:id */
 export async function getInstitution(id: number): Promise<Institution> {
-  const res = await apiClient.get<Institution>(`/institutions/${id}`)
-  return res.data
-}
-
-/** POST /institutions/ */
-export async function createInstitution(
-  data: Record<string, unknown>
-): Promise<Institution> {
-  const res = await apiClient.post<Institution>('/institutions/', data)
-  return res.data
+  return (await apiClient.get<Institution>(`/institutions/${id}`)).data
 }

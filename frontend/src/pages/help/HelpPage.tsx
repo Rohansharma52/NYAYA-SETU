@@ -1,178 +1,66 @@
-import { Shield, CheckCircle, XCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { BarChart3, BellRing, Building2, CheckCircle2, FilePlus2, Fingerprint, FolderKanban, GitMerge, LayoutDashboard, Radar, Search, Workflow } from 'lucide-react'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Card } from '../../components/ui'
 
-const DEMO_CREDENTIALS = [
-  { role: 'System Admin', email: 'admin@aicte.demo', password: 'Admin@123456' },
-  { role: 'Bureau Officer', email: 'officer1@aicte.demo', password: 'Demo@123456' },
-  { role: 'Coord. Reviewer', email: 'reviewer@aicte.demo', password: 'Demo@123456' },
-  { role: 'Senior Management', email: 'management@aicte.demo', password: 'Demo@123456' },
-  { role: 'Data Admin', email: 'datamgr@aicte.demo', password: 'Demo@123456' },
-  { role: 'Regional Officer', email: 'regional@aicte.demo', password: 'Demo@123456' },
+const DEMO = [
+  { who: 'PGRC officer', email: 'officer2@aicte.demo', step: 'Register complaint → paste “Students of A.I.E.T. Faridabad are charged extra fees”. The identity engine links AIET from the acronym + city.', to: '/cases/new' },
+  { who: 'System', email: '', step: 'On save, NYAYA SETU finds RB and FIN files on the same institution and raises “Potential Overlapping Cases – Coordination Required”.', to: '/overlaps' },
+  { who: 'Coordination reviewer', email: 'reviewer@aicte.demo', step: 'Overlap Radar → AIET: see bureau lanes, rule C2 (parallel directions), the duplicate from the same complainant and the proposed lead (RB).', to: '/overlaps' },
+  { who: 'Reviewer', email: 'reviewer@aicte.demo', step: 'Click “Start One-Voice coordination” — lead + supporting bureaus, tasks and deadlines are created; all officers are alerted.', to: '/coordination' },
+  { who: 'Senior management', email: 'management@aicte.demo', step: 'Command Centre: totals, pending beyond timeline, bureau workload, disposal rate; Gangotri shows the critical “closure vs enforcement” conflict.', to: '/dashboard' },
+  { who: 'Senior management', email: 'management@aicte.demo', step: 'Reports → monthly/quarterly performance, region-wise and overlap reports; Identity Lab → benchmark (F1 vs. baselines).', to: '/reports' },
 ]
 
-const USER_ROLES = [
-  {
-    role: 'System Admin',
-    description: 'Full system access',
-    actions: 'Manage users, view audit log, all features',
-  },
-  {
-    role: 'Senior Management',
-    description: 'Oversight and reporting',
-    actions: 'View reports, audit log, coordination',
-  },
-  {
-    role: 'Bureau Officer',
-    description: 'Case handling',
-    actions: 'Assign and update cases, coordination',
-  },
-  {
-    role: 'Regional Officer',
-    description: 'Regional case handling',
-    actions: 'Handle regional cases',
-  },
-  {
-    role: 'Data Admin',
-    description: 'Data management',
-    actions: 'Imports, institution data',
-  },
-  {
-    role: 'Coordination Reviewer',
-    description: 'CCP workflow',
-    actions: 'Record decisions, close coordination items',
-  },
+const COVERAGE = [
+  { icon: Building2, t: 'Centralized institution profile', d: 'Institution 360°: AICTE ID, AISHE, address, region, aliases, consolidated history, risk', to: '/institutions' },
+  { icon: FolderKanban, t: 'Complaint / case tracking', d: 'Case ID, receipt date, category, status, bureau, officer, last & next action, expected disposal', to: '/cases' },
+  { icon: Radar, t: 'Cross-bureau overlap detection', d: 'Automatic, explainable; duplicate / conflict / related / independent; lead bureau', to: '/overlaps' },
+  { icon: LayoutDashboard, t: 'Real-time dashboard', d: 'Received, pending, under process, disposed, transferred, beyond timeline, institution & bureau workload', to: '/dashboard' },
+  { icon: Workflow, t: 'Workflow & action history', d: 'Chronological actions with officer, bureau, timestamp, remarks, documents, transfers', to: '/cases' },
+  { icon: Search, t: 'Search & filters', d: 'Name, AICTE ID, case ID, bureau, region, category, status, date range; Ctrl K anywhere', to: '/cases' },
+  { icon: BellRing, t: 'Alerts & notifications', d: 'Overlap, pending reminders, escalation and timeline alerts every 15 minutes', to: '/notifications' },
+  { icon: BarChart3, t: 'Reports & analytics', d: 'Bureau, region, institution, ageing, disposal rate, overlap, monthly & quarterly', to: '/reports' },
+  { icon: Fingerprint, t: 'Innovation', d: 'Identity resolution across acronyms, typos, Hindi, IDs, e-mail and address — benchmarked', to: '/identity-lab' },
 ]
 
-const IMPLEMENTED = [
-  'Dashboard with statistics overview',
-  'Institutions — search, filter, view linked cases',
-  'Cases — full lifecycle: status changes, assignments, notes',
-  'Coordination (CCP) — tasks, acknowledge, decisions, close',
-  'Notifications — per-notification and bulk mark-read',
-  'Reports — case ageing, trends, institution breakdown, backlog charts + CSV export',
-  'Imports — institution and case CSV preview/commit workflow',
-  'User Management — pending approvals, approve/reject/suspend',
-  'Audit Log — filterable, paginated',
-  'Profile — view and edit own profile',
-]
-
-const LIMITATIONS = [
-  'All data is synthetic demo data — not official AICTE records',
-  'No real auth persistence beyond JWT token in localStorage',
-  'Password change must be done via system administrator',
-  'No email notifications sent — prototype only',
-  'Built exclusively for SIH Grand Finale demonstration',
-]
-
-const WALKTHROUGH_STEPS = [
-  'Login as admin (admin@aicte.demo / Admin@123456) → view Dashboard overview',
-  'Navigate to Institutions → search for an institution → view linked cases',
-  'Open a case → change status → add a note or action',
-  'Go to Relationships → review a pending relationship candidate',
-  'Go to Coordination → open an active CCP item → acknowledge → add a follow-up task',
-  'Show an overdue coordination item and its timeline',
-  'Go to Reports → view the case ageing chart → export cases CSV',
-]
+export function HelpContent() {
+  return (
+    <div className="space-y-6">
+      <Card title="5-minute judge demo" subtitle="The exact example from PS 26264, end to end" icon={<FilePlus2 className="h-5 w-5" />}>
+        <ol className="space-y-3">
+          {DEMO.map((d, i) => (
+            <li key={i} className="flex gap-4 rounded-2xl border border-slate-200 p-4">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gold-300 to-gold-500 text-sm font-extrabold text-ink-900">{i + 1}</span>
+              <div className="flex-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-royal-600">{d.who}{d.email && <span className="ml-2 font-mono normal-case tracking-normal text-slate-400">{d.email}</span>}</p>
+                <p className="mt-1 text-sm text-slate-700">{d.step}</p>
+              </div>
+              <Link to={d.to} className="self-center text-xs font-semibold text-royal-600 hover:underline">Open →</Link>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-4 text-xs text-slate-500">All demo passwords: <span className="font-mono">Demo@123456</span> (admin: <span className="font-mono">Admin@123456</span>). Sample CPGRAMS export for the import demo: <span className="font-mono">docs/samples/cpgrams_export_sample.csv</span>.</p>
+      </Card>
+      <Card title="Problem statement coverage" icon={<GitMerge className="h-5 w-5" />}>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {COVERAGE.map((c) => (
+            <Link key={c.t} to={c.to} className="group rounded-2xl border border-slate-200 p-4 transition hover:border-royal-200 hover:shadow-soft">
+              <div className="flex items-center gap-2"><c.icon className="h-4 w-4 text-royal-500" /><p className="text-sm font-bold text-slate-900">{c.t}</p><CheckCircle2 className="ml-auto h-4 w-4 text-emerald-500" /></div>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{c.d}</p>
+            </Link>
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+}
 
 export default function HelpPage() {
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <PageHeader title="Help & Information" />
-
-        {/* Amber warning */}
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
-          <Shield className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800">
-            <strong>DEMO PROTOTYPE</strong> — All data is synthetic demo data. Not official AICTE records.
-            Built for SIH Grand Finale demonstration only.
-          </p>
-        </div>
-
-        {/* Demo Credentials */}
-        <Card title="Demo Credentials">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {DEMO_CREDENTIALS.map(c => (
-                  <tr key={c.email}>
-                    <td className="px-4 py-2 whitespace-nowrap font-medium">{c.role}</td>
-                    <td className="px-4 py-2 whitespace-nowrap font-mono text-xs">{c.email}</td>
-                    <td className="px-4 py-2 whitespace-nowrap font-mono text-xs">{c.password}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* User Roles */}
-        <Card title="User Roles">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Key Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {USER_ROLES.map(r => (
-                  <tr key={r.role}>
-                    <td className="px-4 py-2 whitespace-nowrap font-medium">{r.role}</td>
-                    <td className="px-4 py-2">{r.description}</td>
-                    <td className="px-4 py-2 text-gray-600">{r.actions}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* What's Implemented */}
-        <Card title="What's Implemented">
-          <ul className="space-y-2">
-            {IMPLEMENTED.map(item => (
-              <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
-                <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        {/* Limitations */}
-        <Card title="Limitations">
-          <ul className="space-y-2">
-            {LIMITATIONS.map(item => (
-              <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
-                <XCircle className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        {/* SIH Demo Walkthrough */}
-        <Card title="SIH Demo Walkthrough (5-7 min)">
-          <ol className="space-y-3 list-decimal list-inside">
-            {WALKTHROUGH_STEPS.map((step, i) => (
-              <li key={i} className="text-sm text-gray-700 leading-relaxed">
-                {step}
-              </li>
-            ))}
-          </ol>
-        </Card>
-      </div>
+    <div>
+      <PageHeader eyebrow="Help" title="Help & demo guide" description="How NYAYA SETU maps to PS 26264 and a guided walkthrough with demo accounts." />
+      <HelpContent />
     </div>
   )
 }

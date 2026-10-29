@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for NYAYA-SETU AICTE C³ backend tests.
+"""Shared pytest fixtures for NYAYA SETU backend tests.
 
 Isolation strategy
 ------------------
@@ -28,6 +28,9 @@ _test_ctx = _CC(schemes=["sha256_crypt"], deprecated="auto")
 import app.core.security as _sec  # noqa: E402
 _sec.pwd_context = _test_ctx
 # ─────────────────────────────────────────────────────────────────────────────
+
+from app.core.config import settings as _settings  # noqa: E402
+_settings.ALERT_SCAN_ENABLED = False  # no background scanner during tests
 
 import pytest
 from sqlalchemy import create_engine, event

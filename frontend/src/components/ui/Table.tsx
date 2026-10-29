@@ -1,92 +1,73 @@
 import React from 'react'
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
-import { clsx } from 'clsx'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
+import { cn } from '../../lib/cn'
 
 export type SortDir = 'asc' | 'desc'
 
-export interface TableColumn {
+export interface TableColumn<T> {
   key: string
-  header: string
+  header: React.ReactNode
+  render: (row: T, index: number) => React.ReactNode
   sortable?: boolean
-  render?: (value: unknown, row: Record<string, unknown>) => React.ReactNode
+  className?: string
+  headerClassName?: string
 }
 
-interface TableProps {
-  columns: TableColumn[]
-  data: Record<string, unknown>[]
-  onSort?: (key: string) => void
+interface TableProps<T> {
+  columns: TableColumn<T>[]
+  data: T[]
+  rowKey: (row: T) => string | number
+  onRowClick?: (row: T) => void
   sortKey?: string
   sortDir?: SortDir
-  emptyMessage?: string
+  onSort?: (key: string) => void
+  empty?: React.ReactNode
+  className?: string
+  rowClassName?: (row: T) => string | undefined
 }
 
-export function Table({
-  columns,
-  data,
-  onSort,
-  sortKey,
-  sortDir,
-  emptyMessage = 'No data available.',
-}: TableProps) {
+export function Table<T>({ columns, data, rowKey, onRowClick, sortKey, sortDir, onSort, empty, className, rowClassName }: TableProps<T>) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+    <div className={cn('overflow-x-auto', className)}>
+      <table className="table-modern w-full min-w-[720px] border-separate border-spacing-0">
+        <thead>
           <tr>
             {columns.map((col) => (
-              <th
-                key={col.key}
-                scope="col"
-                className={clsx(
-                  'px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider',
-                  col.sortable && onSort && 'cursor-pointer select-none hover:text-gray-700'
+              <th key={col.key} className={cn('first:rounded-tl-xl last:rounded-tr-xl', col.headerClassName)}>
+                {col.sortable && onSort ? (
+                  <button className="inline-flex items-center gap-1 hover:text-slate-800" onClick={() => onSort(col.key)}>
+                    {col.header}
+                    {sortKey === col.key ? (
+                      sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-40" />
+                    )}
+                  </button>
+                ) : (
+                  col.header
                 )}
-                onClick={col.sortable && onSort ? () => onSort(col.key) : undefined}
-              >
-                <span className="inline-flex items-center gap-1">
-                  {col.header}
-                  {col.sortable && onSort && (
-                    <span className="text-gray-400">
-                      {sortKey === col.key ? (
-                        sortDir === 'asc' ? (
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        ) : (
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        )
-                      ) : (
-                        <ChevronsUpDown className="h-3.5 w-3.5" />
-                      )}
-                    </span>
-                  )}
-                </span>
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-100">
+        <tbody>
           {data.length === 0 ? (
             <tr>
-              <td
-                colSpan={columns.length}
-                className="px-4 py-8 text-center text-sm text-gray-500"
-              >
-                {emptyMessage}
+              <td colSpan={columns.length} className="!py-14 text-center text-sm text-slate-400">
+                {empty ?? 'No records found'}
               </td>
             </tr>
           ) : (
-            data.map((row, rowIdx) => (
+            data.map((row, i) => (
               <tr
-                key={rowIdx}
-                className="hover:bg-gray-50 transition-colors duration-100"
+                key={rowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={cn(onRowClick && 'cursor-pointer', rowClassName?.(row))}
+                style={{ animation: `fade-up .45s var(--ease-out) ${Math.min(i, 12) * 0.025}s both` }}
               >
                 {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap"
-                  >
-                    {col.render
-                      ? col.render(row[col.key], row)
-                      : (row[col.key] as React.ReactNode) ?? '—'}
+                  <td key={col.key} className={col.className}>
+                    {col.render(row, i)}
                   </td>
                 ))}
               </tr>

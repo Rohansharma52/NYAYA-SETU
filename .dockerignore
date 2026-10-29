@@ -1,0 +1,11 @@
+**/node_modules
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/*.db
+**/dist
+backend/uploads
+backend/.env
+tools
+docs/*.mp4
+.git

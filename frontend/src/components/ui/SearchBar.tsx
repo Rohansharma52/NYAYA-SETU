@@ -1,66 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
+import { cn } from '../../lib/cn'
 
 interface SearchBarProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
-  onClear?: () => void
+  className?: string
+  autoFocus?: boolean
 }
 
-export function SearchBar({
-  value,
-  onChange,
-  placeholder = 'Search…',
-  onClear,
-}: SearchBarProps) {
-  const [localValue, setLocalValue] = useState(value)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Sync external value changes (e.g., reset)
-  useEffect(() => {
-    setLocalValue(value)
-  }, [value])
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVal = e.target.value
-    setLocalValue(newVal)
-
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      onChange(newVal)
-    }, 300)
-  }
-
-  const handleClear = () => {
-    setLocalValue('')
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    onChange('')
-    onClear?.()
-  }
-
+export function SearchBar({ value, onChange, placeholder = 'Search…', className, autoFocus }: SearchBarProps) {
   return (
-    <div className="relative flex items-center">
-      <Search className="absolute left-3 h-4 w-4 text-gray-400 pointer-events-none" />
+    <div className={cn('relative', className)}>
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       <input
         type="search"
-        value={localValue}
-        onChange={handleChange}
+        value={value}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="block w-full rounded-md border border-gray-300 pl-9 pr-8 py-2 text-sm
-          text-gray-900 placeholder-gray-400 shadow-sm bg-white
-          focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
-          transition-colors duration-150"
+        className="input-base pl-10 pr-9 [&::-webkit-search-cancel-button]:hidden"
       />
-      {localValue && (
+      {value && (
         <button
-          type="button"
-          onClick={handleClear}
-          className="absolute right-2 p-0.5 text-gray-400 hover:text-gray-600 rounded-sm
-            focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          onClick={() => onChange('')}
           aria-label="Clear search"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
         >
-          <X className="h-4 w-4" />
+          <X className="h-3.5 w-3.5" />
         </button>
       )}
     </div>
