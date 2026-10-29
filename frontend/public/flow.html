@@ -61,16 +61,20 @@ button:disabled{opacity:.35;cursor:default}
 .tech b{display:block;font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--k);margin-bottom:4px}
 .tech span{font-size:14px;line-height:1.45;color:#d5e1f3}
 .hint{font-size:12.5px;color:var(--muted)}
-.nav{font-size:13px;color:var(--muted)}
-.nav a{color:#7dd3fc}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tab{font-family:var(--mono);font-size:13.5px;font-weight:600;letter-spacing:.06em;text-decoration:none;color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:9px 16px;background:#0b1324}
+.tab:hover{border-color:var(--cyan)}
+.tab[aria-current="page"]{color:#04131a;background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 14px rgba(34,211,238,.45)}
+a.btn{font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.06em;text-decoration:none;border-radius:6px;padding:9px 14px;border:1px solid var(--cyan);color:#04131a;background:var(--cyan);box-shadow:0 0 16px rgba(34,211,238,.5)}
+a.btn:focus-visible,.tab:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 @media (max-width:760px){.bar{grid-template-columns:1fr}.ctrl{align-items:flex-start}.btns{justify-content:flex-start}.tech{grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){[data-s],.e.solid.on{transition:none}}
 </style>
 
 <div class="wrap">
   <header>
-    <h1><span>NYAYA SETU</span> · how every complaint is handled</h1>
-    <div class="eyebrow">SIH 2026 · PS 26264 · Team Sanjeevni</div>
+    <div><h1><span>NYAYA SETU</span> · how every complaint is handled</h1><div class="eyebrow" style="margin-top:4px">SIH 2026 · PS 26264 · Team Sanjeevni</div></div>
+    <nav class="tabs" aria-label="Pages"><a class="tab" href="https://nyaya-setu-f1wa.onrender.com/flow.html" aria-current="page">① Complaint flow</a><a class="tab" href="https://nyaya-setu-f1wa.onrender.com/stack.html">② Tech stack</a><a class="tab" href="https://nyaya-setu-f1wa.onrender.com/">Open live demo ↗</a></nav>
   </header>
 
   <div class="stage" id="stage" role="button" tabindex="0" aria-label="Diagram. Click to show the next layer.">
@@ -175,6 +179,7 @@ button:disabled{opacity:.35;cursor:default}
       <div class="btns">
         <button id="prev" type="button">← Back</button>
         <button id="next" type="button" class="primary">Next →</button>
+        <a id="onward" class="btn" href="https://nyaya-setu-f1wa.onrender.com/stack.html" hidden>Next: Technology stack →</a>
         <button id="all" type="button">Show all</button>
         <button id="reset" type="button">Restart</button>
       </div>
@@ -190,7 +195,6 @@ button:disabled{opacity:.35;cursor:default}
     <div style="--k:var(--green)"><b>Matching</b><span>RapidFuzz + own Hindi transliteration and rules</span></div>
     <div style="--k:var(--amber)"><b>Deployment</b><span>Docker; demo on Render, target NIC / MeghRaj cloud</span></div>
   </div>
-  <div class="nav">See also: <a href="stack.html">full technology stack</a></div>
 </div>
 
 <script>
@@ -222,7 +226,8 @@ function render(){
   document.getElementById('stepTitle').textContent = t;
   document.getElementById('stepText').textContent = p;
   document.getElementById('prev').disabled = step === 1;
-  document.getElementById('next').disabled = step === N;
+  document.getElementById('next').hidden = step === N;
+  document.getElementById('onward').hidden = step !== N;
   document.getElementById('tech').classList.toggle('on', step === N);
 }
 const go = d => { step = Math.min(N, Math.max(1, step + d)); render(); };
