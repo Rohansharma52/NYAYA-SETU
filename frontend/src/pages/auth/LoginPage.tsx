@@ -47,7 +47,7 @@ export default function LoginPage() {
 
   return (
     <AuthLayout>
-      <div className="glass ring-gradient rounded-3xl p-7 shadow-[0_30px_80px_-30px_rgba(0,0,0,.7)] sm:p-8">
+      <div className="glass conic-ring rounded-3xl p-7 shadow-[0_30px_80px_-30px_rgba(0,0,0,.7)] sm:p-8">
         <div className="mb-7">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-400/10 px-2.5 py-1 text-[11px] font-semibold text-gold-300 ring-1 ring-gold-400/25">
             <Sparkles className="h-3 w-3" /> Single-window monitoring
@@ -56,7 +56,7 @@ export default function LoginPage() {
           <p className="mt-1.5 text-sm text-white/55">Authorised AICTE officials only. Activity is audit-logged.</p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4" noValidate>
+        <form onSubmit={submit} className="stagger space-y-4" noValidate>
           <label className="block">
             <span className="mb-1.5 block text-[12.5px] font-semibold text-white/70">Official e-mail</span>
             <span className="relative block">
@@ -103,7 +103,7 @@ export default function LoginPage() {
             disabled={loading}
             className="group relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-gold-300 via-gold-400 to-gold-500 text-[15px] font-bold text-ink-900 shadow-glow-gold transition hover:brightness-105 active:translate-y-px disabled:opacity-60"
           >
-            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/45 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+            <span className="btn-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-white/55 to-transparent" />
             {loading ? (
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-ink-900/30 border-t-ink-900" />
             ) : (
@@ -120,7 +120,7 @@ export default function LoginPage() {
             <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/35">One-click demo roles</span>
             <span className="h-px flex-1 bg-white/10" />
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="stagger mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {DEMO_ACCOUNTS.map((a) => (
               <button
                 key={a.email}
@@ -132,10 +132,10 @@ export default function LoginPage() {
                   submit(undefined, a)
                 }}
                 className={cn(
-                  'group flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] p-2 text-left transition hover:border-white/25 hover:bg-white/[.08] disabled:opacity-50',
+                  'group flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] p-2 text-left transition duration-300 hover:-translate-y-0.5 hover:border-gold-300/40 hover:bg-white/[.09] hover:shadow-[0_8px_24px_-12px_rgba(248,180,36,.5)] disabled:opacity-50',
                 )}
               >
-                <span className={cn('h-7 w-1.5 shrink-0 rounded-full bg-gradient-to-b', a.tone)} />
+                <span className={cn('h-7 w-1.5 shrink-0 rounded-full bg-gradient-to-b transition-all duration-300 group-hover:h-8 group-hover:w-2', a.tone)} />
                 <span className="min-w-0">
                   <span className="block truncate text-[12px] font-bold text-white/90">{a.label}</span>
                   <span className="block truncate text-[10.5px] text-white/40">{a.sub}</span>

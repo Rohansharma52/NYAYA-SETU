@@ -176,6 +176,19 @@ export function AppLayout() {
     window.scrollTo({ top: 0 })
   }, [location.pathname])
 
+  // Cursor spotlight on any interactive card
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('.card-hover') as HTMLElement | null
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--mx', `${e.clientX - r.left}px`)
+      el.style.setProperty('--my', `${e.clientY - r.top}px`)
+    }
+    document.addEventListener('pointermove', onMove, { passive: true })
+    return () => document.removeEventListener('pointermove', onMove)
+  }, [])
+
   const visible = NAV_ITEMS.filter((n) => !n.roles || (user && n.roles.includes(user.role as string)))
   const groups = Array.from(new Set(visible.map((n) => n.group)))
   const badgeFor = (n: NavItem) => (n.badge === 'overlaps' ? badges.overlaps : n.badge === 'transfers' ? badges.transfers : n.badge === 'reviews' ? badges.reviews : 0)
@@ -304,7 +317,8 @@ export function AppLayout() {
         </header>
 
         <main className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:py-8">
-          <div key={location.pathname} className="animate-fade-up">
+          <span key={`p-${location.pathname}`} className="route-progress" aria-hidden />
+          <div key={location.pathname} className="animate-rise-in">
             <Outlet />
           </div>
           <footer className="mt-12 flex flex-col items-center justify-between gap-2 border-t border-slate-200/70 pt-5 text-[11px] text-slate-400 sm:flex-row">

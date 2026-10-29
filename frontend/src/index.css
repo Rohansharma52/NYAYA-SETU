@@ -150,6 +150,86 @@
   }
 }
 
+/* ── Motion & brand polish ─────────────────────────────────────────────── */
+@property --angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+
+@layer components {
+  /* Logo on an ivory disc with a gold→royal hairline ring */
+  .logo-badge {
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #f4f6ff 60%, #e6eaff 100%);
+    box-shadow: 0 0 0 1.5px rgba(248,180,36,.65), 0 0 0 3px rgba(124,136,245,.25), 0 6px 18px -6px rgba(10,16,41,.6);
+  }
+  .logo-badge-glow { animation: badge-glow 4.5s ease-in-out infinite; }
+
+  /* Rotating conic border for hero cards */
+  .conic-ring { position: relative; isolation: isolate; }
+  .conic-ring::before {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit; padding: 1.2px; z-index: -1;
+    background: conic-gradient(from var(--angle), rgba(248,180,36,.0) 0deg, rgba(248,180,36,.85) 60deg, rgba(255,255,255,.35) 120deg, rgba(124,136,245,.75) 200deg, rgba(74,222,128,.45) 280deg, rgba(248,180,36,.0) 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: spin-angle 7s linear infinite;
+    pointer-events: none;
+  }
+
+  /* Cursor spotlight — set --mx/--my from script */
+  .spotlight { position: relative; overflow: hidden; }
+  .spotlight::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+    background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(248,196,74,.16), transparent 60%);
+    transition: opacity .35s ease;
+  }
+  .spotlight:hover::after { opacity: 1; }
+  .card-hover { position: relative; }
+  .card-hover::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+    background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%), rgba(91,102,236,.09), transparent 60%);
+    transition: opacity .3s ease;
+  }
+  .card-hover:hover::after { opacity: 1; }
+
+  /* Tricolour hairline */
+  .tricolor-line {
+    height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, #FF9933 18%, #FFF6E5 50%, #138808 82%, transparent);
+    transform-origin: center; animation: draw-x 1.4s cubic-bezier(.22,1,.36,1) both;
+  }
+  /* Light rays from above */
+  .light-rays {
+    background: conic-gradient(from 180deg at 50% -10%, transparent 0deg, rgba(255,214,140,.10) 12deg, transparent 22deg, rgba(160,170,255,.08) 34deg, transparent 46deg, rgba(255,214,140,.07) 60deg, transparent 75deg, transparent 285deg, rgba(160,170,255,.07) 300deg, transparent 314deg, rgba(255,214,140,.09) 326deg, transparent 338deg, rgba(160,170,255,.08) 348deg, transparent 360deg);
+    animation: rays 18s ease-in-out infinite alternate;
+  }
+  .orbit { animation: spin-slow 26s linear infinite; transform-origin: center; }
+  .orbit-rev { animation: spin-slow 38s linear infinite reverse; transform-origin: center; }
+  .route-progress {
+    position: fixed; top: 0; left: 0; height: 2.5px; z-index: 60; pointer-events: none;
+    background: linear-gradient(90deg, #F8B424, #FDE08A, #7C88F5);
+    box-shadow: 0 0 10px rgba(248,180,36,.7);
+    animation: route-progress .7s cubic-bezier(.22,1,.36,1) forwards;
+  }
+  .animate-sheen { animation: sheen 6s linear infinite; }
+  .btn-sheen { animation: btn-sheen 3.8s ease-in-out infinite; }
+}
+
+@keyframes spin-angle { to { --angle: 360deg; } }
+@keyframes badge-glow {
+  0%,100% { box-shadow: 0 0 0 1.5px rgba(248,180,36,.65), 0 0 0 3px rgba(124,136,245,.25), 0 6px 18px -6px rgba(10,16,41,.6), 0 0 0 0 rgba(248,180,36,0); }
+  50% { box-shadow: 0 0 0 1.5px rgba(248,180,36,.9), 0 0 0 3px rgba(124,136,245,.35), 0 6px 18px -6px rgba(10,16,41,.6), 0 0 22px 2px rgba(248,180,36,.35); }
+}
+@keyframes draw-x { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes rays { from { transform: rotate(-4deg) scale(1.05); opacity: .7; } to { transform: rotate(4deg) scale(1.1); opacity: 1; } }
+@keyframes btn-sheen { 0%,55% { transform: translateX(0) skewX(-12deg); } 100% { transform: translateX(450%) skewX(-12deg); } }
+@keyframes sheen { to { background-position: 200% center; } }
+@keyframes route-progress {
+  0% { width: 0; opacity: 1; }
+  70% { width: 85%; opacity: 1; }
+  100% { width: 100%; opacity: 0; }
+}
+@keyframes halo { 0% { transform: scale(.85); opacity: .55; } 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(18px) scale(.97); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+.animate-rise-in { animation: rise-in .9s cubic-bezier(.22,1,.36,1) both; }
+.animate-halo { animation: halo 3.2s cubic-bezier(.2,.6,.4,1) infinite; }
+
 @layer utilities {
   .stagger > * {
     animation: fade-up .55s var(--ease-out) both;
