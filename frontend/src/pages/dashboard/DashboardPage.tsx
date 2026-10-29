@@ -47,7 +47,7 @@ export default function DashboardPage() {
     queryFn: () => getOverview({ bureau_id: bureauId, region: region || undefined }),
     refetchInterval: 30000,
   })
-  const overlaps = useQuery({ queryKey: ['overlaps', 'dash'], queryFn: () => listOverlaps(), refetchInterval: 30000 })
+  const overlaps = useQuery({ queryKey: ['overlaps', 'dash'], queryFn: () => listOverlaps({ limit: 12 }), refetchInterval: 30000 })
   const pulse = useQuery({ queryKey: ['pulse'], queryFn: () => getPulse(12), refetchInterval: 10000 })
 
   const trendReceived = useMemo(() => ov.data?.trend.map((t) => t.received) ?? [], [ov.data])

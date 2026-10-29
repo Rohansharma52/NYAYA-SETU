@@ -22,7 +22,7 @@ const PRIORITY_DOT: Record<string, string> = {
 }
 
 function useBadges(enabled: boolean) {
-  const overlaps = useQuery({ queryKey: ['overlaps', 'badge'], queryFn: () => listOverlaps(), enabled, refetchInterval: 60000 })
+  const overlaps = useQuery({ queryKey: ['overlaps', 'badge'], queryFn: () => listOverlaps({ limit: 0 }), enabled, refetchInterval: 60000 })
   const transfers = useQuery({ queryKey: ['transfers', 'badge'], queryFn: () => listTransfers('requested'), enabled, refetchInterval: 60000 })
   const reviews = useQuery({ queryKey: ['relationships', 'badge'], queryFn: () => listRelationships({ review_status: 'pending', limit: 1 }), enabled, refetchInterval: 60000 })
   return {

@@ -61,3 +61,25 @@ def test_benchmark_beats_baselines():
     assert m["ire"]["f1"] > m["exact"]["f1"] + 0.3
     assert m["ire"]["precision"] >= 0.95
     assert m["ire"]["recall"] >= 0.9
+
+
+def test_blocking_keeps_answers_on_large_registry():
+    """With 1,000 extra colleges, the fast candidate-blocking path must give the same answer."""
+    from app.services import identity as I
+    from app.services.identity_benchmark import build_dataset, build_profiles
+    profiles = build_profiles() + [
+        I.InstitutionProfile(id=900000 + k, canonical_name=f"Demo College of Engineering {k:04d}",
+                             short_name=f"DCE{k:04d}", city=f"City {k % 200}")
+        for k in range(1000)
+    ]
+    sample = build_dataset()[::6]
+    old = I.BLOCKING_THRESHOLD
+    try:
+        I.BLOCKING_THRESHOLD = 10 ** 9
+        full = [(I.resolve(profiles, text=r["text"], top_k=1)["candidates"] or [{}])[0].get("institution_id") for r in sample]
+        I.BLOCKING_THRESHOLD = 300
+        I._INDEX_CACHE.clear()
+        fast = [(I.resolve(profiles, text=r["text"], top_k=1)["candidates"] or [{}])[0].get("institution_id") for r in sample]
+    finally:
+        I.BLOCKING_THRESHOLD = old
+    assert full == fast

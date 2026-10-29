@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.core.security import get_current_active_user
 from app.db.session import get_db
@@ -39,15 +39,57 @@ def _st(c) -> str:
     return getattr(c.status, "value", c.status)
 
 
+class _Ref:
+    """Light read-only stand-in for Institution / Bureau rows (shared between cases)."""
+    __slots__ = ("id", "code", "name", "canonical_name", "short_name", "region")
+
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+
+class _Row:
+    """Light read-only case record: only the columns analytics needs.
+
+    Loading full ORM objects (with joins) for tens of thousands of cases was the
+    bottleneck in the 50,000-case load test; plain column rows are ~10x faster.
+    """
+    __slots__ = ("id", "status", "due_date", "received_date", "created_at", "disposed_date",
+                 "bureau_id", "institution_id", "bureau", "institution")
+
+
 def _cases(db: Session, user: User, bureau_id: Optional[int] = None, region: Optional[str] = None):
-    q = db.query(Case).options(joinedload(Case.bureau), joinedload(Case.institution)).filter(Case.is_active == True)  # noqa: E712
+    """Cached until any case changes (signature check costs a few ms)."""
+    from app.services.intelligence import _cached
+    scope = user.bureau_id if user.role == UserRole.BUREAU_OFFICER else bureau_id
+    return _cached(db, ("analytics_rows", scope, (region or "").lower()),
+                   lambda: _load_rows(db, user, bureau_id, region))
+
+
+def _load_rows(db: Session, user: User, bureau_id: Optional[int] = None, region: Optional[str] = None):
+    from app.models.institution import Institution
+    bureaus = {b.id: _Ref(id=b.id, code=b.code, name=b.name) for b in db.query(Bureau.id, Bureau.code, Bureau.name)}
+    q = (db.query(Case.id, Case.status, Case.due_date, Case.received_date, Case.created_at, Case.disposed_date,
+                  Case.bureau_id, Case.institution_id, Institution.canonical_name, Institution.short_name, Institution.region)
+         .outerjoin(Institution, Institution.id == Case.institution_id)
+         .filter(Case.is_active == True))  # noqa: E712
     if user.role == UserRole.BUREAU_OFFICER:
         q = q.filter(Case.bureau_id == user.bureau_id)
     elif bureau_id:
         q = q.filter(Case.bureau_id == bureau_id)
-    rows = q.all()
     if region:
-        rows = [c for c in rows if c.institution and (c.institution.region or "").lower() == region.lower()]
+        q = q.filter(Institution.region.ilike(region))
+    insts: Dict[int, _Ref] = {}
+    rows = []
+    for (cid, st, due, rec, created, disp, bid, iid, iname, ishort, ireg) in q.all():
+        r = _Row()
+        r.id, r.status, r.due_date, r.received_date, r.created_at, r.disposed_date = cid, st, due, rec, created, disp
+        r.bureau_id, r.institution_id = bid, iid
+        r.bureau = bureaus.get(bid)
+        if iid is not None and iid not in insts:
+            insts[iid] = _Ref(id=iid, canonical_name=iname, short_name=ishort, region=ireg)
+        r.institution = insts.get(iid)
+        rows.append(r)
     return rows
 
 
@@ -160,17 +202,25 @@ async def overview(
         ageing[key] += 1
 
     # 12-month trend
-    trend = []
+    months = []
     for i in range(11, -1, -1):
         y, m = now.year, now.month - i
         while m <= 0:
             m += 12
             y -= 1
-        start = datetime(y, m, 1, tzinfo=timezone.utc)
-        end = datetime(y + (m // 12), (m % 12) + 1, 1, tzinfo=timezone.utc)
-        rec = sum(1 for c in cases if start <= (_aware(c.received_date or c.created_at) or now) < end)
-        dis = sum(1 for c in cases if c.disposed_date and start <= _aware(c.disposed_date) < end)
-        trend.append({"month": start.strftime("%b %y"), "received": rec, "disposed": dis})
+        months.append((y, m))
+    rec_n = {k: 0 for k in months}
+    dis_n = {k: 0 for k in months}
+    for c in cases:  # one pass instead of 24 passes over all cases
+        r = _aware(c.received_date or c.created_at) or now
+        if (r.year, r.month) in rec_n:
+            rec_n[(r.year, r.month)] += 1
+        if c.disposed_date:
+            d = _aware(c.disposed_date)
+            if (d.year, d.month) in dis_n:
+                dis_n[(d.year, d.month)] += 1
+    trend = [{"month": datetime(y, m, 1).strftime("%b %y"), "received": rec_n[(y, m)], "disposed": dis_n[(y, m)]}
+             for (y, m) in months]
 
     return {
         "totals": totals,

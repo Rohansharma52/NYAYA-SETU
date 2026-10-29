@@ -26,7 +26,7 @@ export default function ReportsPage() {
   const perf = useQuery({ queryKey: ['performance', period], queryFn: () => getPerformance({ period, months: 12 }) })
   const ov = useQuery({ queryKey: ['overview', 'reports'], queryFn: () => getOverview() })
   const regions = useQuery({ queryKey: ['regions'], queryFn: getRegions })
-  const overlaps = useQuery({ queryKey: ['overlaps', 'reports'], queryFn: () => listOverlaps(), enabled: tab === 'overlap' })
+  const overlaps = useQuery({ queryKey: ['overlaps', 'reports'], queryFn: () => listOverlaps({ limit: 1000 }), enabled: tab === 'overlap' })
 
   const [busy, setBusy] = useState<string | null>(null)
   async function serverExport(kind: 'csv' | 'pdf' | 'coord') {

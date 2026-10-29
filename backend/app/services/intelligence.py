@@ -60,7 +60,61 @@ def case_to_facts(case) -> CaseFacts:
     )
 
 
-def load_cases(db: Session, institution_ids: Optional[Iterable[int]] = None):
+# Files closed more than this many days ago are history: they stay in reports and in
+# Institution 360°, but are not re-analysed for live overlap / risk on every request.
+LIVE_WINDOW_DAYS = 180
+
+_CACHE: Dict[tuple, tuple] = {}
+
+
+def _data_signature(db: Session) -> tuple:
+    """Cheap fingerprint of case + coordination data; any write changes it."""
+    from sqlalchemy import func
+    from app.models.case import Case, CaseAction
+    from app.models.coordination import CoordinationItem
+    return (
+        db.query(func.count(Case.id), func.max(Case.created_at), func.max(Case.updated_at)).one(),
+        db.query(func.max(CaseAction.id)).scalar(),
+        db.query(func.count(CoordinationItem.id), func.max(CoordinationItem.updated_at)).one(),
+        datetime.now(timezone.utc).date(),  # day-based rules (overdue, recency) roll over daily
+    )
+
+
+def _cached(db: Session, key: tuple, compute):
+    sig = _data_signature(db)
+    hit = _CACHE.get(key)
+    if hit and hit[0] == sig:
+        return hit[1]
+    value = compute()
+    _CACHE[key] = (sig, value)
+    return value
+
+
+def _live_filter(q, now: Optional[datetime] = None):
+    """Open cases, plus cases closed or touched within LIVE_WINDOW_DAYS."""
+    from sqlalchemy import or_
+    from app.models.case import Case, CaseStatus
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=LIVE_WINDOW_DAYS)
+    closed = [CaseStatus(s) for s in OPEN_EXCLUDED]
+    return q.filter(or_(Case.status.notin_(closed), Case.disposed_date >= cutoff,
+                        Case.last_action_date >= cutoff, Case.received_date >= cutoff))
+
+
+def live_institution_ids(db: Session, min_bureaus: int = 1) -> List[int]:
+    """Institutions with at least one open case and >= min_bureaus bureaus among their live cases."""
+    from sqlalchemy import case as sql_case, func
+    from app.models.case import Case, CaseStatus
+    closed = [CaseStatus(s) for s in OPEN_EXCLUDED]
+    q = db.query(Case.institution_id).filter(Case.is_active == True)  # noqa: E712
+    q = _live_filter(q).group_by(Case.institution_id).having(
+        func.sum(sql_case((Case.status.notin_(closed), 1), else_=0)) >= 1)
+    if min_bureaus > 1:
+        q = q.having(func.count(func.distinct(Case.bureau_id)) >= min_bureaus)
+    return [i for (i,) in q.all()]
+
+
+def load_cases(db: Session, institution_ids: Optional[Iterable[int]] = None, live_only: bool = False):
     from app.models.case import Case
     q = (
         db.query(Case)
@@ -77,7 +131,9 @@ def load_cases(db: Session, institution_ids: Optional[Iterable[int]] = None):
         if not ids:
             return []
         q = q.filter(Case.institution_id.in_(ids))
-    return q.all()
+    if live_only:
+        q = _live_filter(q)
+    return q.unique().all() if hasattr(q, "unique") else q.all()
 
 
 def group_by_institution(cases) -> Dict[int, list]:
@@ -125,11 +181,62 @@ def institution_brief(inst) -> dict:
     }
 
 
+_INST_CACHE: Dict[int, tuple] = {}
+
+
+def _institution_signatures(db: Session, ids: List[int]) -> Dict[int, tuple]:
+    """Per-institution fingerprint of its live cases: changes whenever one of them changes."""
+    from sqlalchemy import func
+    from app.models.case import Case
+    if not ids:
+        return {}
+    today = datetime.now(timezone.utc).date()
+    out: Dict[int, tuple] = {}
+    for k in range(0, len(ids), 900):  # stay under SQLite's bound-parameter limit
+        q = db.query(Case.institution_id, func.count(Case.id), func.max(Case.updated_at), func.max(Case.created_at),
+                     func.max(Case.last_action_date)).filter(Case.is_active == True,  # noqa: E712
+                                                             Case.institution_id.in_(ids[k:k + 900]))
+        for iid, n, upd, cre, last in _live_filter(q).group_by(Case.institution_id).all():
+            out[iid] = (n, upd, cre, last, today)
+    return out
+
+
+def _analysis_for(db: Session, ids: List[int]) -> Dict[int, Optional[dict]]:
+    """Overlap analysis per institution, recomputed only for institutions whose cases changed."""
+    sigs = _institution_signatures(db, ids)
+    stale = [i for i in ids if _INST_CACHE.get(i, (None,))[0] != sigs.get(i)]
+    for k in range(0, len(stale), 900):
+        chunk = stale[k:k + 900]
+        groups = group_by_institution(load_cases(db, chunk, live_only=True))
+        for iid in chunk:
+            items = groups.get(iid, [])
+            entry = None
+            if len({c.bureau_id for c in items if c.bureau_id}) >= 2 and \
+                    any(_status(c.status) not in OPEN_EXCLUDED for c in items):
+                analysis = analyze_institution([case_to_facts(c) for c in items])
+                counts = analysis["classification_counts"]
+                if len(analysis["active_bureaus"]) >= 2 or counts.get("action_conflict") or counts.get("duplicate"):
+                    entry = {
+                        "institution": institution_brief(items[0].institution),
+                        "case_count": len(items),
+                        "open_case_count": sum(1 for c in items if _status(c.status) not in OPEN_EXCLUDED),
+                        "cases": [case_brief(c) for c in sorted(items, key=lambda c: c.case_number)],
+                        "analysis": analysis,
+                        "bureau_ids": sorted({c.bureau_id for c in items if c.bureau_id}),
+                    }
+            _INST_CACHE[iid] = (sigs.get(iid), entry)
+    return {i: _INST_CACHE[i][1] for i in ids}
+
+
 def overlap_clusters(db: Session, bureau_id: Optional[int] = None, include_low: bool = True) -> List[dict]:
-    """Institutions whose complaints are handled by more than one bureau/cell."""
+    """Institutions whose complaints are handled by more than one bureau/cell.
+
+    Analyses are cached per institution and recomputed only when that institution's
+    cases change, so the radar stays fast at tens of thousands of cases.
+    """
     from app.models.coordination import CoordinationItem, CoordinationStatus
-    cases = load_cases(db)
-    groups = group_by_institution(cases)
+    ids = live_institution_ids(db, min_bureaus=2)
+    analyses = _analysis_for(db, ids)
     open_coords = {
         c.institution_id: c for c in db.query(CoordinationItem).filter(
             CoordinationItem.institution_id.isnot(None),
@@ -137,61 +244,69 @@ def overlap_clusters(db: Session, bureau_id: Optional[int] = None, include_low: 
         ).all()
     }
     clusters = []
-    for inst_id, items in groups.items():
-        bureaus = {c.bureau_id for c in items if c.bureau_id}
-        if len(bureaus) < 2:
+    for iid in ids:
+        entry = analyses.get(iid)
+        if not entry:
             continue
-        if not any(_status(c.status) not in OPEN_EXCLUDED for c in items):
+        if bureau_id and bureau_id not in entry["bureau_ids"]:
             continue
-        if bureau_id and bureau_id not in bureaus:
+        if not include_low and entry["analysis"]["severity"] in ("low", "none"):
             continue
-        facts = [case_to_facts(c) for c in items]
-        analysis = analyze_institution(facts)
-        counts = analysis["classification_counts"]
-        if len(analysis["active_bureaus"]) < 2 and not (counts.get("action_conflict") or counts.get("duplicate")):
-            continue  # historical files only — nothing to coordinate
-        if not include_low and analysis["severity"] in ("low", "none"):
-            continue
-        inst = items[0].institution
-        coord = open_coords.get(inst_id)
-        clusters.append({
-            "institution": institution_brief(inst),
-            "case_count": len(items),
-            "open_case_count": sum(1 for c in items if _status(c.status) not in OPEN_EXCLUDED),
-            "cases": [case_brief(c) for c in sorted(items, key=lambda c: c.case_number)],
-            "analysis": analysis,
-            "coordination": {
-                "id": coord.id, "reference_number": coord.reference_number,
-                "status": _status(coord.status),
-                "lead_bureau_id": coord.lead_bureau_id,
-            } if coord else None,
-        })
+        coord = open_coords.get(iid)
+        cluster = {k: v for k, v in entry.items() if k != "bureau_ids"}
+        cluster["coordination"] = {
+            "id": coord.id, "reference_number": coord.reference_number,
+            "status": _status(coord.status), "lead_bureau_id": coord.lead_bureau_id,
+        } if coord else None
+        clusters.append(cluster)
     clusters.sort(key=lambda c: (-SEVERITY_ORDER[c["analysis"]["severity"]], -c["open_case_count"]))
     return clusters
 
 
+_PROFILE_CACHE: Dict[str, tuple] = {}
+
+
 def institution_profiles(db: Session) -> List[InstitutionProfile]:
-    from app.models.institution import Institution
+    """Registry profiles for identity resolution, rebuilt only when the registry changes."""
+    from sqlalchemy import func
+    from app.models.institution import Institution, InstitutionIdentifier
+    sig = (db.query(func.count(Institution.id), func.max(Institution.updated_at), func.max(Institution.created_at)).one(),
+           db.query(func.count(InstitutionIdentifier.id), func.max(InstitutionIdentifier.id)).one())
+    hit = _PROFILE_CACHE.get("all")
+    if hit and hit[0] == sig:
+        return hit[1]
     insts = db.query(Institution).options(joinedload(Institution.identifiers)).all()
-    return [profile_from_orm(i) for i in insts]
+    profiles = [profile_from_orm(i) for i in insts]
+    _PROFILE_CACHE["all"] = (sig, profiles)
+    return profiles
+
+
+_RISK_CACHE: Dict[int, tuple] = {}
 
 
 def risk_board(db: Session, limit: int = 50) -> List[dict]:
-    from app.models.institution import Institution
-    cases = load_cases(db)
-    groups = group_by_institution(cases)
+    """Risk score for institutions with open complaints; recomputed only where cases changed."""
+    ids = live_institution_ids(db)
+    sigs = _institution_signatures(db, ids)
     now = datetime.now(timezone.utc)
-    rows = []
-    for inst_id, items in groups.items():
-        facts = [case_to_facts(c) for c in items]
-        overlap = analyze_institution(facts) if len({f.bureau_id for f in facts}) > 1 else None
-        risk = risk_profile(facts, now=now, overlap=overlap)
-        rows.append({
-            "institution": institution_brief(items[0].institution),
-            "risk": risk,
-            "case_count": len(items),
-            "bureaus": sorted({f.bureau_code for f in facts}),
-        })
+    stale = [i for i in ids if _RISK_CACHE.get(i, (None,))[0] != sigs.get(i)]
+    for k in range(0, len(stale), 900):
+        chunk = stale[k:k + 900]
+        groups = group_by_institution(load_cases(db, chunk, live_only=True))
+        for iid in chunk:
+            items = groups.get(iid, [])
+            if not items:
+                _RISK_CACHE[iid] = (sigs.get(iid), None)
+                continue
+            facts = [case_to_facts(c) for c in items]
+            overlap = analyze_institution(facts) if len({f.bureau_id for f in facts}) > 1 else None
+            _RISK_CACHE[iid] = (sigs.get(iid), {
+                "institution": institution_brief(items[0].institution),
+                "risk": risk_profile(facts, now=now, overlap=overlap),
+                "case_count": len(items),
+                "bureaus": sorted({f.bureau_code for f in facts}),
+            })
+    rows = [_RISK_CACHE[i][1] for i in ids if _RISK_CACHE.get(i, (None, None))[1]]
     rows.sort(key=lambda r: -r["risk"]["score"])
     return rows[:limit]
 
@@ -297,13 +412,16 @@ def run_alert_scan(db: Session) -> dict:
     """Generate timeline/SLA, reminder, escalation and overlap alerts. Idempotent per ~day."""
     now = datetime.now(timezone.utc)
     created = {"sla_breach": 0, "sla_approaching": 0, "pending_reminder": 0, "escalation": 0, "overlap": 0}
-    cases = load_cases(db)
+    from app.models.case import Case, CaseStatus
+    cases = (db.query(Case).options(joinedload(Case.institution))
+             .filter(Case.is_active == True, Case.status.notin_([CaseStatus(x) for x in OPEN_EXCLUDED])).all())  # noqa: E712
     oversight = _oversight_users(db)
+    bureau_users: Dict[Optional[int], set] = {}
     for c in cases:
         status = _status(c.status)
-        if status in OPEN_EXCLUDED:
-            continue
-        recipients = {u.id for u in _bureau_users(db, c.bureau_id)}
+        if c.bureau_id not in bureau_users:
+            bureau_users[c.bureau_id] = {u.id for u in _bureau_users(db, c.bureau_id)}
+        recipients = set(bureau_users[c.bureau_id])
         if c.assigned_officer_id:
             recipients.add(c.assigned_officer_id)
         due = _aware(c.due_date)

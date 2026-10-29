@@ -32,7 +32,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 ENGINE_VERSION = "IRE-2.0"
 
@@ -532,6 +532,72 @@ def score_profile(q: QuerySignals, profile: InstitutionProfile) -> Candidate:
     )
 
 
+# ─── Candidate blocking (keeps resolution fast on a registry of thousands) ─────
+# Full scoring is ~0.5 ms per institution. For large registries we first pick a short
+# list using an inverted index (character trigrams of distinctive name words, acronyms,
+# places and hard identifiers), then score only that short list.
+BLOCKING_THRESHOLD = 300
+BLOCK_SIZE = 150
+_INDEX_CACHE: Dict[int, tuple] = {}
+
+
+def _trigrams(token: str) -> Set[str]:
+    t = f" {token} "
+    return {t[i:i + 3] for i in range(len(t) - 2)}
+
+
+def _build_index(profiles: Sequence[InstitutionProfile]) -> dict:
+    import math
+    tri: Dict[str, Set[int]] = {}
+    exact: Dict[str, Set[int]] = {}
+    for n, p in enumerate(profiles):
+        f = p.features()
+        for tok in set(f["core"]) | f["places"]:
+            for g in _trigrams(tok):
+                tri.setdefault(g, set()).add(n)
+        keys = set(f["acronyms"]) | f["places"] | f["domains"] | {v for v in f["ids"].values() if v}
+        if f["pincode"]:
+            keys.add(f["pincode"])
+        if f["phone"]:
+            keys.add(f["phone"])
+        for k in keys:
+            exact.setdefault(k, set()).add(n)
+    total = max(len(profiles), 1)
+    idf = {g: math.log(total / len(ids)) + 0.1 for g, ids in tri.items()}
+    return {"tri": tri, "idf": idf, "exact": exact}
+
+
+def _block(q: "QuerySignals", profiles: Sequence[InstitutionProfile]) -> List[InstitutionProfile]:
+    key = id(profiles)
+    cached = _INDEX_CACHE.get(key)
+    if not cached or cached[0] is not profiles:
+        _INDEX_CACHE.clear()
+        cached = (profiles, _build_index(profiles))
+        _INDEX_CACHE[key] = cached
+    idx = cached[1]
+    must: Set[int] = set()
+    query_keys = set(q.tokens) | set(q.pincodes) | set(q.phones) | set(q.domains)
+    query_keys |= {re.sub(r"[^a-z0-9]", "", x.lower()) for x in q.aicte_ids + q.aishe_ids}
+    joined = re.sub(r"[^a-z0-9]", "", "".join(t for t in q.tokens if len(t) == 1))  # "a.i.e.t" -> "aiet"
+    if joined:
+        query_keys.add(joined)
+    for k in query_keys:
+        must |= idx["exact"].get(k, set())
+    scores: Dict[int, float] = {}
+    for tok in set(q.tokens) | set(q.name_tokens):
+        if len(tok) < 3:
+            continue
+        for g in _trigrams(tok):
+            w = idx["idf"].get(g)
+            if w is None:
+                continue
+            for n in idx["tri"][g]:
+                scores[n] = scores.get(n, 0.0) + w
+    ranked = [n for n, _ in sorted(scores.items(), key=lambda kv: -kv[1])[:BLOCK_SIZE]]
+    chosen = list(dict.fromkeys(ranked + sorted(must)))[: BLOCK_SIZE * 3]
+    return [profiles[n] for n in chosen]
+
+
 def resolve(
     profiles: Sequence[InstitutionProfile],
     text: str = "",
@@ -541,7 +607,8 @@ def resolve(
 ) -> dict:
     """Rank institutions for a complaint text / structured fields."""
     q = extract_signals(text=text, **fields)
-    candidates = [score_profile(q, p) for p in profiles]
+    pool = _block(q, profiles) if len(profiles) > BLOCKING_THRESHOLD else profiles
+    candidates = [score_profile(q, p) for p in pool]
     candidates = [c for c in candidates if c.confidence >= min_confidence]
     candidates.sort(key=lambda c: c.confidence, reverse=True)
     top = candidates[:top_k]

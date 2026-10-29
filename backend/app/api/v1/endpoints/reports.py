@@ -8,7 +8,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func as sqlfunc
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.security import get_current_active_user
 from app.db.session import get_db
@@ -96,10 +97,21 @@ def _csv_bytes(header: List[str], rows: List[list]) -> bytes:
 
 def _case_query(db: Session, current_user: User, status: Optional[str], bureau_id: Optional[int],
                 institution_id: Optional[int], region: Optional[str], category: Optional[str],
+                priority: Optional[str], overdue: Optional[bool], limit: Optional[int] = None):
+    query = _base_query(db, current_user, status, bureau_id, institution_id, region, category, priority, overdue)
+    query = query.options(selectinload(Case.institution).selectinload(Institution.identifiers),
+                          selectinload(Case.bureau), selectinload(Case.assigned_officer)).order_by(Case.case_number)
+    if limit:
+        query = query.limit(limit)
+    return query.all()
+
+
+def _base_query(db: Session, current_user: User, status: Optional[str], bureau_id: Optional[int],
+                institution_id: Optional[int], region: Optional[str], category: Optional[str],
                 priority: Optional[str], overdue: Optional[bool]):
+    """All filters applied in SQL (including 'beyond timeline'), no row loading."""
     query = (db.query(Case).filter(Case.is_active == True)  # noqa: E712
-             .options(joinedload(Case.institution).joinedload(Institution.identifiers),
-                      joinedload(Case.bureau), joinedload(Case.assigned_officer)))
+             )
     if status:
         statuses = [s for s in status.split(",") if s in STATUS_LABELS]
         if statuses:
@@ -119,11 +131,11 @@ def _case_query(db: Session, current_user: User, status: Optional[str], bureau_i
         query = query.join(Institution, Case.institution_id == Institution.id).filter(Institution.region == region)
     if current_user.role == UserRole.BUREAU_OFFICER and current_user.bureau_id:
         query = query.filter(Case.bureau_id == current_user.bureau_id)
-    cases = query.order_by(Case.case_number).all()
     if overdue:
         now = datetime.now(timezone.utc)
-        cases = [c for c in cases if _days_overdue(c, now)]
-    return cases
+        query = query.filter(Case.due_date < now,
+                             Case.status.notin_([CaseStatus(x) for x in FINISHED]))
+    return query
 
 
 def _filters_text(**kw) -> str:
@@ -380,8 +392,14 @@ async def export_cases_pdf(
 ):
     """Case register as a printable landscape PDF with a status summary. Logged to audit."""
     _check_reportlab()
-    cases = _case_query(db, current_user, status, bureau_id, institution_id, region, category, priority, overdue)
+    PDF_MAX = 1000  # a printable register; the CSV export always carries every row
+    base = _base_query(db, current_user, status, bureau_id, institution_id, region, category, priority, overdue)
+    counts = {(_s.value if hasattr(_s, "value") else _s): n
+              for _s, n in base.with_entities(Case.status, sqlfunc.count(Case.id)).group_by(Case.status).all()}
     now = datetime.now(timezone.utc)
+    n_beyond = base.filter(Case.due_date < now, Case.status.notin_([CaseStatus(x) for x in FINISHED])).count()
+    cases = _case_query(db, current_user, status, bureau_id, institution_id, region, category, priority, overdue, limit=PDF_MAX)
+    total = sum(counts.values())
     if current_user.role == UserRole.BUREAU_OFFICER and current_user.bureau_id:
         bureau_id = current_user.bureau_id
     bureau = db.query(Bureau).filter(Bureau.id == bureau_id).first() if bureau_id else None
@@ -389,17 +407,18 @@ async def export_cases_pdf(
     filters = _filters_text(status=status and ", ".join(STATUS_LABELS.get(s, s) for s in status.split(",")),
                             region=region, category=category, priority=priority, overdue="Beyond timeline" if overdue else None)
 
-    st = [_status(c) for c in cases]
-    beyond = [i for i, c in enumerate(cases) if _days_overdue(c, now)]
-    kpis = [("Total cases", len(cases)), ("Pending", sum(s in PENDING_GROUP for s in st)),
-            ("Under process", sum(s in {"under_process", "decision_review"} for s in st)),
-            ("Disposed / closed", sum(s in {"disposed", "closed"} for s in st)),
-            ("Transferred", sum(s in {"transfer_requested", "transferred"} for s in st)),
-            ("Escalated", st.count("escalated")), ("Beyond timeline", len(beyond))]
+    grp = lambda keys: sum(counts.get(k, 0) for k in keys)  # noqa: E731
+    kpis = [("Total cases", f"{total:,}"), ("Pending", f"{grp(PENDING_GROUP):,}"),
+            ("Under process", f"{grp({'under_process', 'decision_review'}):,}"),
+            ("Disposed / closed", f"{grp({'disposed', 'closed'}):,}"),
+            ("Transferred", f"{grp({'transfer_requested', 'transferred'}):,}"),
+            ("Escalated", f"{counts.get('escalated', 0):,}"), ("Beyond timeline", f"{n_beyond:,}")]
+    shown = cases
+    beyond = [i for i, c in enumerate(shown) if _days_overdue(c, now)]
 
     def blocks(styles, uni, width):
         rows = []
-        for c in cases:
+        for c in shown:
             od = _days_overdue(c, now)
             rows.append([
                 c.case_number, _d(c.received_date or c.created_at),
@@ -418,9 +437,10 @@ async def export_cases_pdf(
             out.append(Paragraph("No cases match the selected filters.", styles["sub"]))
         return out
 
-    pdf = _pdf("Case Register", f"Scope: {scope}  ·  {filters}  ·  {len(cases)} cases  ·  rows in red are beyond the prescribed timeline",
+    more = f"  ·  first {PDF_MAX:,} rows shown, use CSV for all" if total > PDF_MAX else ""
+    pdf = _pdf("Case Register", f"Scope: {scope}  ·  {filters}  ·  {total:,} cases{more}  ·  rows in red are beyond the prescribed timeline",
                current_user, blocks)
-    log_audit(db, current_user.id, "pdf_export", "cases", None, f"PDF export: {len(cases)} cases ({filters})")
+    log_audit(db, current_user.id, "pdf_export", "cases", None, f"PDF export: {total} cases ({filters})")
     return _download(pdf, f"NYAYA_SETU_Case_Register_{_stamp()}.pdf", "application/pdf")
 
 

@@ -1,6 +1,7 @@
 """NYAYA SETU — Integrated Institution Complaint Monitoring Platform (AICTE, SIH PS 26264)."""
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -38,9 +39,26 @@ async def _alert_loop() -> None:
         await asyncio.sleep(max(settings.ALERT_SCAN_INTERVAL_MINUTES, 1) * 60)
 
 
+def _warm_caches() -> None:
+    """Pre-compute overlap and risk analyses so the first officer request is fast."""
+    from app.services import intelligence as intel
+    db = SessionLocal()
+    try:
+        t = datetime.now(timezone.utc)
+        intel.overlap_clusters(db)
+        intel.risk_board(db)
+        logger.info("Intelligence caches warmed in %.1fs", (datetime.now(timezone.utc) - t).total_seconds())
+    except Exception as exc:  # never block startup
+        logger.warning("Cache warm-up skipped: %s", exc)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting %s — %s", settings.APP_NAME, settings.APP_ENV)
+    if os.environ.get("CACHE_WARMUP", "true").lower() != "false":
+        asyncio.get_running_loop().run_in_executor(None, _warm_caches)
     task = asyncio.create_task(_alert_loop()) if settings.ALERT_SCAN_ENABLED else None
     yield
     if task:

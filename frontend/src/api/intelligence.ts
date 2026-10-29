@@ -12,8 +12,12 @@ export interface OverlapSummary {
   awaiting_coordination: number
 }
 
-export async function listOverlaps(params: { severity?: string; bureau_id?: number } = {}): Promise<{ summary: OverlapSummary; items: OverlapCluster[]; generated_at: string }> {
+export async function listOverlaps(params: { severity?: string; bureau_id?: number; limit?: number } = {}): Promise<{ summary: OverlapSummary; items: OverlapCluster[]; total?: number; generated_at: string }> {
   return (await apiClient.get('/intelligence/overlaps', { params })).data
+}
+
+export async function getOverlap(institutionId: number): Promise<OverlapCluster> {
+  return (await apiClient.get(`/intelligence/overlaps/${institutionId}`)).data
 }
 
 export async function startCoordination(institutionId: number, data: { lead_bureau_id?: number; note?: string } = {}) {

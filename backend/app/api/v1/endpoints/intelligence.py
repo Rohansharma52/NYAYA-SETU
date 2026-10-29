@@ -99,6 +99,7 @@ async def identity_benchmark(_: User = Depends(get_current_active_user)):
 async def list_overlaps(
     severity: Optional[str] = Query(None, description="critical | high | medium | low"),
     bureau_id: Optional[int] = Query(None),
+    limit: int = Query(200, ge=0, le=5000, description="Max institutions returned; summary always covers all"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -117,7 +118,8 @@ async def list_overlaps(
         summary["duplicates"] += counts.get("duplicate", 0)
         if c["analysis"]["coordination_required"] and not c["coordination"]:
             summary["awaiting_coordination"] += 1
-    return {"summary": summary, "items": clusters, "generated_at": datetime.now(timezone.utc).isoformat(),
+    return {"summary": summary, "items": clusters[:limit], "total": len(clusters),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "data_note": DATA_NOTE}
 
 

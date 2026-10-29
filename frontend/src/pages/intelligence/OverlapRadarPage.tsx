@@ -5,7 +5,7 @@ import {
   AlertOctagon, ArrowLeftRight, ArrowRight, BellRing, Building2, CheckCircle2, Crown, GitMerge, Layers, Megaphone,
   Radar, ScanSearch, ShieldAlert, Sparkles,
 } from 'lucide-react'
-import { listOverlaps, scanAlerts, startCoordination } from '../../api/intelligence'
+import { getOverlap, listOverlaps, scanAlerts, startCoordination } from '../../api/intelligence'
 import { apiError } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { toast } from '../../hooks/useToast'
@@ -271,7 +271,11 @@ export default function OverlapRadarPage() {
   const [params, setParams] = useSearchParams()
   const [sev, setSev] = useState<Sev>('actionable')
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['overlaps', 'radar'], queryFn: () => listOverlaps(), refetchInterval: 30000 })
+  const q = useQuery({ queryKey: ['overlaps', 'radar'], queryFn: () => listOverlaps({ limit: 300 }), refetchInterval: 30000 })
+  const wantedId = Number(params.get('institution')) || 0
+  const inList = (q.data?.items ?? []).some((c) => c.institution.id === wantedId)
+  // A linked institution outside the top-300 list is fetched on its own
+  const extra = useQuery({ queryKey: ['overlaps', 'one', wantedId], queryFn: () => getOverlap(wantedId), enabled: !!wantedId && !!q.data && !inList, retry: false })
   const scan = useMutation({
     mutationFn: scanAlerts,
     onSuccess: (r) => {
@@ -282,13 +286,13 @@ export default function OverlapRadarPage() {
   })
 
   const items = useMemo(() => {
-    const all = q.data?.items ?? []
+    const all = [...(extra.data ? [extra.data] : []), ...(q.data?.items ?? [])]
     if (sev === 'all') return all
     if (sev === 'actionable') return all.filter((c) => c.analysis.severity !== 'low')
     return all.filter((c) => c.analysis.severity === sev)
-  }, [q.data, sev])
+  }, [q.data, extra.data, sev])
   const selectedId = Number(params.get('institution')) || items[0]?.institution.id
-  const selected = (q.data?.items ?? []).find((c) => c.institution.id === selectedId) ?? items[0]
+  const selected = [...(extra.data ? [extra.data] : []), ...(q.data?.items ?? [])].find((c) => c.institution.id === selectedId) ?? items[0]
 
   useEffect(() => {
     if (selected) document.getElementById(`ov-${selected.institution.id}`)?.scrollIntoView({ block: 'nearest' })
@@ -350,6 +354,9 @@ export default function OverlapRadarPage() {
       ) : (
         <div className="grid gap-6 xl:grid-cols-[380px_1fr] [&>*]:min-w-0">
           <div className="space-y-2.5 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:pr-1">
+            {(q.data.total ?? 0) > (q.data.items?.length ?? 0) && (
+              <p className="px-1 text-[11.5px] text-slate-500">Showing the {q.data.items.length} most severe of {q.data.total} institutions. Open any institution from search to see its analysis.</p>
+            )}
             {items.map((c) => {
               const on = selected?.institution.id === c.institution.id
               const counts = c.analysis.classification_counts
