@@ -13,6 +13,7 @@ Usage:
     cd backend
     python seed.py            # create / top-up demo data (idempotent)
     python seed.py --reset    # drop all tables and rebuild the demo from scratch
+    python seed.py --reset --small   # only the 6 scripted scenarios + 96 background cases
 """
 import os
 import random
@@ -380,6 +381,99 @@ def seed_background(db: Session, b: dict, u: dict, i: dict, n: int = 96) -> int:
     return created
 
 
+# ─── Larger sample dataset ────────────────────────────────────────────────────
+# Clearly fictional colleges ("Demo ... College 0001") placed in real cities, so that the
+# dashboard shows realistic volumes without attaching invented complaints to any real
+# institution. Every case is synthetic and labelled; nothing here is AICTE data.
+BULK_CITIES = {
+    "Northern": [("Lucknow", "Uttar Pradesh"), ("Kanpur", "Uttar Pradesh"), ("Patna", "Bihar"), ("Dehradun", "Uttarakhand")],
+    "North-West": [("Chandigarh", "Chandigarh"), ("Ludhiana", "Punjab"), ("Jaipur", "Rajasthan"), ("Gurugram", "Haryana")],
+    "Central": [("Bhopal", "Madhya Pradesh"), ("Indore", "Madhya Pradesh"), ("Raipur", "Chhattisgarh"), ("Ahmedabad", "Gujarat")],
+    "Eastern": [("Kolkata", "West Bengal"), ("Bhubaneswar", "Odisha"), ("Ranchi", "Jharkhand"), ("Guwahati", "Assam")],
+    "Western": [("Mumbai", "Maharashtra"), ("Pune", "Maharashtra"), ("Nagpur", "Maharashtra"), ("Panaji", "Goa")],
+    "Southern": [("Chennai", "Tamil Nadu"), ("Coimbatore", "Tamil Nadu"), ("Madurai", "Tamil Nadu"), ("Puducherry", "Puducherry")],
+    "South-West": [("Bengaluru", "Karnataka"), ("Mysuru", "Karnataka"), ("Kochi", "Kerala"), ("Thiruvananthapuram", "Kerala")],
+    "South-Central": [("Hyderabad", "Telangana"), ("Warangal", "Telangana"), ("Visakhapatnam", "Andhra Pradesh"), ("Vijayawada", "Andhra Pradesh")],
+}
+BULK_KINDS = [("Engineering College", "DEC"), ("Institute of Technology", "DIT"), ("Institute of Management", "DIM"),
+              ("College of Pharmacy", "DCP"), ("Polytechnic", "DPT")]
+
+
+def seed_bulk(db: Session, b: dict, u: dict, n_inst: int = 300, n_cases: int = 2000) -> int:
+    from app.data.registry import REGIONS
+    S = CaseStatus
+    admin = u["admin"]
+    insts = []
+    for k in range(n_inst):
+        region = REGIONS[k % len(REGIONS)]
+        city, state = BULK_CITIES[region][(k // len(REGIONS)) % 4]
+        kind, abbr = BULK_KINDS[k % len(BULK_KINDS)]
+        inst = Institution(
+            canonical_name=f"Demo {kind} {k + 1:04d}, {city}", short_name=f"{abbr}-{k + 1:04d}",
+            institution_type=RNG.choice(["Private Unaided", "Private Unaided", "Government", "Government Aided"]),
+            state=state, district=city, city=city, region=region,
+            data_source="demo_bulk", import_notes=DEMO_NOTE, source_last_synced=NOW, created_by_id=admin.id)
+        db.add(inst)
+        db.flush()
+        db.add(InstitutionIdentifier(institution_id=inst.id, id_type="aicte_permanent_id", id_value=f"9-{9000000000 + k}",
+                                     source_system="Demo registry (fictional)", is_primary=True, is_verified=False))
+        insts.append(inst)
+    db.commit()
+    sla = {"PGRC": 30, "RB": 60, "AB": 45, "ACAD": 45, "FIN": 30}
+    hot = insts[: max(1, n_inst // 5)]  # a fifth of colleges draw most complaints, as in practice
+    codes = list(sla)
+    home = {inst.id: RNG.choice(["PGRC", "PGRC", "RB", "AB", "ACAD", "FIN"]) for inst in insts}
+    created = 0
+    for k in range(n_cases):
+        inst = RNG.choice(hot) if RNG.random() < 0.55 else RNG.choice(insts)
+        # Most colleges are dealt with by one bureau at a time; about 1 in 12 recent files
+        # lands with a second bureau, which is what the Overlap Radar is meant to catch.
+        received = RNG.uniform(1, 420)
+        if received < 200 and RNG.random() > 0.08:
+            bcode = home[inst.id]
+        else:
+            bcode = RNG.choice(codes)
+        cats = [c for c, bs in CATEGORY_BUREAU.items() if bcode in bs]
+        cat = RNG.choice(cats)
+        detail = RNG.choice(["B.Tech", "M.Tech", "MBA", "MCA", "Diploma", "B.Pharm", "PGDM"]) + " " + \
+            RNG.choice(["1st year", "2nd year", "3rd year", "final year", "2024 batch", "2025 batch"])
+        title = f"{RNG.choice(TITLES[cat])} ({detail})"
+        due_in = sla[bcode]
+        if received > 2 * due_in and RNG.random() < 0.9:
+            st = RNG.choice([S.DISPOSED, S.DISPOSED, S.DISPOSED, S.CLOSED, S.TRANSFERRED])
+        elif received <= due_in:
+            st = RNG.choice([S.RECEIVED, S.ASSIGNED, S.UNDER_PROCESS, S.UNDER_PROCESS, S.AWAITING_INFORMATION, S.DISPOSED])
+        else:
+            st = RNG.choice([S.UNDER_PROCESS, S.AWAITING_INFORMATION, S.DECISION_REVIEW, S.ESCALATED, S.DISPOSED, S.DISPOSED])
+        if bcode == "RB" and st in (S.ESCALATED, S.DECISION_REVIEW):
+            st = S.UNDER_PROCESS  # RB enforcement conflicts are kept to the scripted scenarios
+        disposed_after = RNG.uniform(5, min(received - 0.5, due_in * 1.5)) if st in (S.DISPOSED, S.CLOSED) and received > 6 else None
+        if st in (S.DISPOSED, S.CLOSED) and disposed_after is None:
+            st = S.UNDER_PROCESS
+        acts = []
+        if st not in (S.RECEIVED, S.ASSIGNED):
+            acts.append((min(RNG.uniform(1, 5), received * 0.5), "status_change", "Taken up for examination", S.UNDER_PROCESS))
+        if st == S.ESCALATED:
+            acts.append((min(RNG.uniform(due_in * 0.7, due_in), received * 0.9), "status_change", "Escalated: institution non-responsive", S.ESCALATED))
+        if disposed_after:
+            acts.append((disposed_after, "status_change", RNG.choice(["Disposed: grievance redressed by institution",
+                                                                      "Disposed: action taken report accepted",
+                                                                      "Disposed: no merit after examination"]), S.DISPOSED))
+        make_case(
+            db, inst=inst, bureau=b[bcode], officer=u[RNG.choice(OFFICERS[bcode])], received=received, due_in=due_in,
+            disposed_after=disposed_after, source=f"{bcode}/SAMPLE/{10000 + k}", title=title, category=cat, status=st,
+            priority=RNG.choice(["low", "medium", "medium", "high", "urgent"]),
+            summary=f"{title} — {inst.canonical_name}. {DEMO_NOTE}", actions=acts,
+            next_action=None if st in (S.DISPOSED, S.CLOSED, S.TRANSFERRED) else "Await institution's response",
+        )
+        created += 1
+        if created % 500 == 0:
+            db.commit()
+    db.commit()
+    print(f"✓ Sample dataset: {created} cases across {n_inst} fictional 'Demo' colleges")
+    return created
+
+
 # ─── Relationships, coordination, rules ───────────────────────────────────────
 
 def seed_relationships(db: Session, scenario_cases: list) -> None:
@@ -493,6 +587,8 @@ def main() -> None:
             scenario = seed_scenarios(db, bureaus, users, insts)
             seed_background(db, bureaus, users, insts)
             seed_relationships(db, scenario)
+            if "--small" not in sys.argv:
+                seed_bulk(db, bureaus, users)
         else:
             print("• Cases already present — skipped (use --reset to rebuild)")
         seed_coordination(db, bureaus, users, insts)
