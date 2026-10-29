@@ -116,7 +116,11 @@ export default function DashboardPage() {
               <Zap className="h-3 w-3" /> Live
             </span>
             <div className="mask-fade-x relative flex-1 overflow-hidden">
-              <div className="flex w-max animate-marquee gap-8 whitespace-nowrap text-xs text-white/70 hover:[animation-play-state:paused]">
+              <div
+                className="flex w-max animate-marquee gap-8 whitespace-nowrap text-xs text-white/70 hover:[animation-play-state:paused]"
+                // ~7 s per update keeps the ticker readable whatever the number of events
+                style={{ animationDuration: `${Math.max(60, (pulse.data?.events?.length ?? 0) * 7)}s` }}
+              >
                 {[...(pulse.data?.events ?? []), ...(pulse.data?.events ?? [])].map((e, i) => (
                   <Link key={`${e.id}-${i}`} to={`/cases/${e.case_id}`} className="inline-flex items-center gap-2 hover:text-white">
                     <span className="font-bold" style={{ color: bureauStyle(e.bureau_code).color === '#64748B' ? '#cbd5e1' : '#FDE08A' }}>{e.bureau_code}</span>
