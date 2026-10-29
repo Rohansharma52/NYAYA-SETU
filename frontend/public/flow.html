@@ -1,0 +1,239 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="icon" href="/favicon.svg"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<title>NYAYA SETU Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one dark "control room" stage, diagram on top, narration bar beneath, step-by-step reveal */
+:root{
+  --bg:#070d1a; --panel:#0d1628; --line:#1d2b45; --fg:#e6f1ff; --muted:#8aa0bf;
+  --cyan:#22d3ee; --indigo:#818cf8; --green:#4ade80; --amber:#facc15; --rose:#fb7185; --sky:#38bdf8; --violet:#c084fc;
+  --sans:"IBM Plex Sans",system-ui,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--sans);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 28px}
+.wrap{max-width:1500px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 20px}
+h1{margin:0;font-size:clamp(20px,2.4vw,28px);font-weight:700;letter-spacing:.01em;text-wrap:balance}
+h1 span{color:var(--cyan)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow-x:auto;cursor:pointer}
+.stage svg{display:block;min-width:1050px;width:100%;height:auto}
+/* nodes */
+.n rect,.n path.shape,.n ellipse{fill:#0b1324;stroke-width:2}
+.n text{fill:var(--fg);font-family:var(--sans);font-size:15px;font-weight:600;text-anchor:middle;dominant-baseline:middle}
+.n text.sub{fill:var(--muted);font-size:12.5px;font-weight:500}
+.frame rect{fill:none;stroke-width:1.2;stroke-opacity:.55}
+.frame text{font-family:var(--mono);font-size:12.5px;font-weight:600;letter-spacing:.12em}
+.e{fill:none;stroke-width:2;stroke-linecap:round}
+.e.solid{stroke-dasharray:1;stroke-dashoffset:1}
+.e.dash{stroke-dasharray:6 6;opacity:0}
+.lbl{font-family:var(--mono);font-size:12px;font-weight:600}
+[data-s]{opacity:0;transition:opacity .45s ease}
+[data-s].on{opacity:1}
+.e.solid.on{stroke-dashoffset:0;transition:stroke-dashoffset .8s ease .15s,opacity .2s}
+.e.dash.on{opacity:.9}
+.now{filter:url(#glow)}
+/* colours by role */
+.c-cyan{stroke:var(--cyan)} .c-indigo{stroke:var(--indigo)} .c-green{stroke:var(--green)} .c-amber{stroke:var(--amber)}
+.c-rose{stroke:var(--rose)} .c-sky{stroke:var(--sky)} .c-violet{stroke:var(--violet)} .c-grey{stroke:#64748b}
+.t-cyan{fill:var(--cyan)} .t-indigo{fill:var(--indigo)} .t-green{fill:var(--green)} .t-sky{fill:var(--sky)} .t-amber{fill:var(--amber)} .t-grey{fill:var(--muted)}
+/* narration bar */
+.bar{display:grid;grid-template-columns:1fr auto;gap:14px 24px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.say{min-width:0}
+.say .eyebrow{color:var(--cyan)}
+.say h2{margin:4px 0 6px;font-size:20px;font-weight:700;text-wrap:balance}
+.say p{margin:0;color:#c6d4ea;font-size:15.5px;line-height:1.55;max-width:80ch}
+.ctrl{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+button{font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--fg);background:#0b1324;border:1px solid var(--line);border-radius:6px;padding:9px 14px;cursor:pointer}
+button:hover{border-color:var(--cyan)}
+button.primary{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(34,211,238,.25)}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+button:disabled{opacity:.35;cursor:default}
+.dots{display:flex;gap:6px}
+.dots i{width:22px;height:4px;border-radius:2px;background:var(--line)}
+.dots i.on{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.tech{display:none;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.tech.on{display:grid}
+.tech div{border:1px solid var(--line);border-top:2px solid var(--k);border-radius:8px;padding:10px 12px;background:var(--panel);min-width:0}
+.tech b{display:block;font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--k);margin-bottom:4px}
+.tech span{font-size:14px;line-height:1.45;color:#d5e1f3}
+.hint{font-size:12.5px;color:var(--muted)}
+@media (max-width:760px){.bar{grid-template-columns:1fr}.ctrl{align-items:flex-start}.btns{justify-content:flex-start}.tech{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){[data-s],.e.solid.on{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span>NYAYA SETU</span> · how every complaint is handled</h1>
+    <div class="eyebrow">SIH 2026 · PS 26264 · Team Sanjeevni</div>
+  </header>
+
+  <div class="stage" id="stage" role="button" tabindex="0" aria-label="Diagram. Click to show the next layer.">
+  <svg viewBox="0 0 1730 640" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="4" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" fill="#7dd3fc"/>
+      </marker>
+    </defs>
+
+    <!-- ========== FRAMES ========== -->
+    <g class="frame" data-s="1"><rect x="14" y="70" width="232" height="370" rx="8" class="c-cyan"/><text x="28" y="92" class="t-cyan">① COMPLAINT SOURCES</text></g>
+    <g class="frame" data-s="2"><rect x="274" y="70" width="232" height="370" rx="8" class="c-indigo"/><text x="288" y="92" class="t-indigo">② BACKEND · FastAPI</text></g>
+    <g class="frame" data-s="3"><rect x="540" y="56" width="790" height="460" rx="8" class="c-green"/><text x="556" y="78" class="t-green">③ INTELLIGENCE LAYER</text></g>
+    <g class="frame" data-s="7"><rect x="1512" y="56" width="206" height="460" rx="8" class="c-sky"/><text x="1526" y="78" class="t-sky">④ DASHBOARDS · React</text></g>
+
+    <!-- ========== EDGES ========== -->
+    <g id="edges">
+      <!-- step 2: sources -> backend -->
+      <path data-s="2" class="e solid c-cyan" pathLength="1" marker-end="url(#ah)" d="M230 140 C260 140,260 268,290 268"/>
+      <path data-s="2" class="e solid c-cyan" pathLength="1" marker-end="url(#ah)" d="M230 228 C260 228,260 148,290 148"/>
+      <path data-s="2" class="e solid c-cyan" pathLength="1" marker-end="url(#ah)" d="M230 308 C260 308,260 268,290 268"/>
+      <path data-s="2" class="e solid c-cyan" pathLength="1" marker-end="url(#ah)" d="M230 388 C260 388,260 268,290 268"/>
+      <path data-s="2" class="e solid c-indigo" pathLength="1" marker-end="url(#ah)" d="M390 176 L390 236"/>
+      <path data-s="2" class="e solid c-indigo" pathLength="1" marker-end="url(#ah)" d="M390 296 L390 356"/>
+      <!-- step 3: backend -> IRE -> decision -->
+      <path data-s="3" class="e solid c-indigo" pathLength="1" marker-end="url(#ah)" d="M490 388 C530 388,520 268,560 268"/>
+      <path data-s="3" class="e solid c-indigo" pathLength="1" marker-end="url(#ah)" d="M490 268 L558 268"/>
+      <path data-s="3" class="e solid c-green" pathLength="1" marker-end="url(#ah)" d="M750 258 L770 258"/>
+      <path data-s="3" class="e solid c-amber" pathLength="1" marker-end="url(#ah)" d="M835 320 L835 368"/>
+      <text data-s="3" x="845" y="350" class="lbl t-amber">No</text>
+      <!-- step 4: decision -> OCI -->
+      <path data-s="4" class="e solid c-amber" pathLength="1" marker-end="url(#ah)" d="M897 258 L928 258"/>
+      <text data-s="4" x="899" y="246" class="lbl t-amber">Yes</text>
+      <path data-s="4" class="e solid c-green" pathLength="1" marker-end="url(#ah)" d="M910 398 C960 398,990 340,1010 306"/>
+      <path data-s="4" class="e solid c-green" pathLength="1" marker-end="url(#ah)" d="M1120 258 L1141 258"/>
+      <!-- step 5: overlap outcomes -->
+      <path data-s="5" class="e solid c-amber" pathLength="1" marker-end="url(#ah)" d="M1205 196 L1205 154"/>
+      <text data-s="5" x="1214" y="182" class="lbl t-amber">No</text>
+      <path data-s="5" class="e solid c-amber" pathLength="1" marker-end="url(#ah)" d="M1205 320 L1205 368"/>
+      <text data-s="5" x="1214" y="350" class="lbl t-amber">Yes</text>
+      <path data-s="5" class="e solid c-rose" pathLength="1" marker-end="url(#ah)" d="M1205 428 L1205 446"/>
+      <!-- step 6: data + risk -->
+      <path data-s="6" class="e solid c-violet" pathLength="1" marker-end="url(#ah)" d="M1025 210 C1025 30,1300 30,1392 82"/>
+      <path data-s="6" class="e solid c-violet" pathLength="1" marker-end="url(#ah)" d="M1290 124 L1348 124"/>
+      <path data-s="6" class="e solid c-violet" pathLength="1" marker-end="url(#ah)" d="M1420 184 L1420 246"/>
+      <!-- step 7: dashboards -->
+      <path data-s="7" class="e solid c-sky" pathLength="1" marker-end="url(#ah)" d="M1490 120 L1528 120"/>
+      <path data-s="7" class="e solid c-sky" pathLength="1" marker-end="url(#ah)" d="M1490 150 C1510 150,1505 280,1528 280"/>
+      <path data-s="7" class="e solid c-sky" pathLength="1" marker-end="url(#ah)" d="M1490 160 C1515 160,1500 440,1528 440"/>
+      <path data-s="7" class="e solid c-sky" pathLength="1" marker-end="url(#ah)" d="M1490 278 C1510 278,1505 200,1528 200"/>
+      <path data-s="7" class="e solid c-rose" pathLength="1" marker-end="url(#ah)" d="M1290 476 C1400 476,1420 360,1528 360"/>
+      <path data-s="7" class="e dash c-rose" marker-end="url(#ah)" d="M1290 466 C1390 440,1440 220,1528 210"/>
+    </g>
+
+    <!-- ========== NODES ========== -->
+    <!-- step 1 -->
+    <g class="n" data-s="1"><rect x="30" y="112" width="200" height="56" rx="6" class="c-cyan"/><text x="130" y="140">CPGRAMS-style CSV</text></g>
+    <g class="n" data-s="1"><rect x="30" y="200" width="200" height="56" rx="6" class="c-cyan"/><text x="130" y="220">Letters · e-mail · e-Office</text><text x="130" y="241" class="sub">entered by officer</text></g>
+    <g class="n" data-s="1"><rect x="30" y="280" width="200" height="56" rx="6" class="c-cyan"/><text x="130" y="308">Bureau registers (CSV)</text></g>
+    <g class="n" data-s="1"><rect x="30" y="360" width="200" height="56" rx="6" class="c-cyan"/><text x="130" y="380">AICTE institution</text><text x="130" y="400" class="sub">master list (CSV)</text></g>
+    <!-- step 2 -->
+    <g class="n" data-s="2"><rect x="290" y="120" width="200" height="56" rx="6" class="c-indigo"/><text x="390" y="140">JWT login</text><text x="390" y="160" class="sub">6 user roles</text></g>
+    <g class="n" data-s="2"><rect x="290" y="240" width="200" height="56" rx="6" class="c-indigo"/><text x="390" y="260">Validation &amp;</text><text x="390" y="280" class="sub">import preview</text></g>
+    <g class="n" data-s="2"><rect x="290" y="360" width="200" height="56" rx="6" class="c-indigo"/><text x="390" y="380">Bureau-level</text><text x="390" y="400" class="sub">access control</text></g>
+    <!-- step 3 -->
+    <g class="n" data-s="3"><rect x="560" y="210" width="190" height="96" rx="6" class="c-green"/><text x="655" y="236">IRE 2.0</text><text x="655" y="258" class="sub">identifies the college</text><text x="655" y="280" class="sub">acronym · typo · Hindi · ID</text></g>
+    <g class="n" data-s="3"><path class="shape c-amber" d="M835 196 L897 258 L835 320 L773 258 Z"/><text x="835" y="250" style="font-size:13.5px">Confident</text><text x="835" y="268" style="font-size:13.5px">match?</text></g>
+    <g class="n" data-s="3"><rect x="760" y="370" width="150" height="56" rx="6" class="c-green"/><text x="835" y="390">Officer picks</text><text x="835" y="410" class="sub">the college</text></g>
+    <!-- step 4 -->
+    <g class="n" data-s="4"><rect x="930" y="210" width="190" height="96" rx="6" class="c-green"/><text x="1025" y="236">OCI-1.0</text><text x="1025" y="258" class="sub">compares open files</text><text x="1025" y="280" class="sub">of other bureaus</text></g>
+    <g class="n" data-s="4"><path class="shape c-amber" d="M1205 196 L1267 258 L1205 320 L1143 258 Z"/><text x="1205" y="250" style="font-size:13.5px">Overlap</text><text x="1205" y="268" style="font-size:13.5px">found?</text></g>
+    <!-- step 5 -->
+    <g class="n" data-s="5"><rect x="1120" y="96" width="170" height="56" rx="6" class="c-green"/><text x="1205" y="116">SLA · reminder ·</text><text x="1205" y="136" class="sub">escalation scan (15 min)</text></g>
+    <g class="n" data-s="5"><rect x="1110" y="370" width="190" height="56" rx="6" class="c-rose"/><text x="1205" y="390">Classify</text><text x="1205" y="410" class="sub">duplicate · conflict · related</text></g>
+    <g class="n" data-s="5"><rect x="1110" y="448" width="190" height="56" rx="6" class="c-rose"/><text x="1205" y="468">Alert officers +</text><text x="1205" y="488" class="sub">propose Lead Bureau</text></g>
+    <!-- step 6 -->
+    <g class="n" data-s="6"><path class="shape c-violet" d="M1350 94 L1350 168 A70 14 0 0 0 1490 168 L1490 94"/><ellipse cx="1420" cy="94" rx="70" ry="14" class="c-violet"/><text x="1420" y="126">PostgreSQL</text><text x="1420" y="148" class="sub">cases · actions · audit</text></g>
+    <g class="n" data-s="6"><rect x="1350" y="248" width="140" height="56" rx="6" class="c-green"/><text x="1420" y="268">Risk Radar</text><text x="1420" y="288" class="sub">score per college</text></g>
+    <!-- step 7 -->
+    <g class="n" data-s="7"><rect x="1530" y="96" width="172" height="50" rx="6" class="c-sky"/><text x="1616" y="114">Command Centre</text><text x="1616" y="132" class="sub">live KPIs</text></g>
+    <g class="n" data-s="7"><rect x="1530" y="176" width="172" height="50" rx="6" class="c-sky"/><text x="1616" y="201">Overlap Radar</text></g>
+    <g class="n" data-s="7"><rect x="1530" y="256" width="172" height="50" rx="6" class="c-sky"/><text x="1616" y="281">Institution 360°</text></g>
+    <g class="n" data-s="7"><rect x="1530" y="336" width="172" height="50" rx="6" class="c-sky"/><text x="1616" y="354">Coordination</text><text x="1616" y="372" class="sub">workspace</text></g>
+    <g class="n" data-s="7"><rect x="1530" y="416" width="172" height="50" rx="6" class="c-sky"/><text x="1616" y="434">Reports</text><text x="1616" y="452" class="sub">PDF / CSV</text></g>
+    <!-- step 8 -->
+    <g class="n" data-s="8"><rect x="14" y="560" width="1704" height="50" rx="8" class="c-grey" style="stroke-dasharray:5 4;stroke-width:1.4"/><text x="866" y="586" style="font-weight:500">Every action is written to the audit log  ·  the officer can override any suggestion  ·  no file is merged or closed automatically</text></g>
+  </svg>
+  </div>
+
+  <div class="bar">
+    <div class="say" aria-live="polite">
+      <div class="eyebrow" id="stepNo">Step 1 of 8</div>
+      <h2 id="stepTitle"></h2>
+      <p id="stepText"></p>
+    </div>
+    <div class="ctrl">
+      <div class="btns">
+        <button id="prev" type="button">← Back</button>
+        <button id="next" type="button" class="primary">Next →</button>
+        <button id="all" type="button">Show all</button>
+        <button id="reset" type="button">Restart</button>
+      </div>
+      <div class="dots" id="dots"></div>
+      <div class="hint">Click the diagram or press → / Space for the next layer</div>
+    </div>
+  </div>
+
+  <div class="tech" id="tech">
+    <div style="--k:var(--sky)"><b>Frontend</b><span>React 18 + TypeScript, Tailwind, Recharts</span></div>
+    <div style="--k:var(--indigo)"><b>Backend / API</b><span>Python + FastAPI, SQLAlchemy, JWT</span></div>
+    <div style="--k:var(--violet)"><b>Database</b><span>PostgreSQL (SQLite for the demo)</span></div>
+    <div style="--k:var(--green)"><b>Matching</b><span>RapidFuzz + own Hindi transliteration and rules</span></div>
+    <div style="--k:var(--amber)"><b>Deployment</b><span>Docker; demo on Render, target NIC / MeghRaj cloud</span></div>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+  ["Complaints arrive from many doors", "CPGRAMS-style exports, letters, e-mail and e-Office notes, bureau registers, and the AICTE institution master list. Today each of these ends up in a different bureau's file."],
+  ["Secure backend", "Officers log in with one of six roles. CSV files are checked and previewed before import, and each officer can change only their own bureau's cases."],
+  ["Which college is this about?", "IRE 2.0 reads acronyms, typos, Hindi text, an AICTE ID or an e-mail domain and finds the right college. If it is not confident, it asks the officer to pick instead of guessing."],
+  ["Is another bureau already on it?", "OCI-1.0 compares the new complaint with the open files of every other bureau for the same college."],
+  ["Overlap found, or normal tracking", "If there is an overlap, it is classified as duplicate, conflict or related, officers are alerted and one Lead Bureau is proposed. If not, the case is tracked with SLA reminders and escalations every 15 minutes."],
+  ["One record for every institution", "Everything is stored in PostgreSQL: cases, actions, transfers, coordination and the audit trail. Risk Radar scores colleges with repeated complaints across bureaus."],
+  ["What officials see", "Command Centre with live KPIs, Overlap Radar, Institution 360°, the Coordination Workspace for the Lead Bureau, and one-click PDF / CSV reports."],
+  ["Officer in control, fully auditable", "Every action is logged, every alert shows its evidence, and nothing is merged or closed automatically. Built on an open-source stack with zero licence cost."]
+];
+const N = STEPS.length;
+let step = 1;
+const els = [...document.querySelectorAll('[data-s]')];
+const dots = document.getElementById('dots');
+for (let i = 0; i < N; i++) dots.appendChild(document.createElement('i'));
+
+function render(){
+  els.forEach(el => {
+    const s = +el.dataset.s;
+    el.classList.toggle('on', s <= step);
+    el.classList.toggle('now', s === step && el.classList.contains('n'));
+  });
+  [...dots.children].forEach((d,i) => d.classList.toggle('on', i < step));
+  const [t, p] = STEPS[step-1];
+  document.getElementById('stepNo').textContent = `Step ${step} of ${N}`;
+  document.getElementById('stepTitle').textContent = t;
+  document.getElementById('stepText').textContent = p;
+  document.getElementById('prev').disabled = step === 1;
+  document.getElementById('next').disabled = step === N;
+  document.getElementById('tech').classList.toggle('on', step === N);
+}
+const go = d => { step = Math.min(N, Math.max(1, step + d)); render(); };
+document.getElementById('next').onclick = e => { e.stopPropagation(); go(1); };
+document.getElementById('prev').onclick = e => { e.stopPropagation(); go(-1); };
+document.getElementById('all').onclick = e => { e.stopPropagation(); step = N; render(); };
+document.getElementById('reset').onclick = e => { e.stopPropagation(); step = 1; render(); };
+document.getElementById('stage').addEventListener('click', () => go(1));
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); go(1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(-1); }
+  else if (e.key === 'Home') { step = 1; render(); }
+  else if (e.key === 'End') { step = N; render(); }
+});
+render();
+</script>
+</body></html>
