@@ -389,6 +389,17 @@ async def commit_cases(
         job.status = ImportStatus.FAILED
         db.commit()
         raise HTTPException(status_code=500, detail="Commit failed")
+
+    # Imported complaints go through the same checks as manually registered ones
+    from app.services.intelligence import notify_case_overlap
+    from app.services.matching import detect_relationships
+    new_ids = [r.created_resource_id for r in valid_rows if r.status == "imported" and r.created_resource_id]
+    for case in db.query(Case).filter(Case.id.in_(new_ids)).all() if new_ids else []:
+        try:
+            detect_relationships(case, db)
+            notify_case_overlap(db, case)
+        except Exception as e:  # never fail the import because of an alert
+            logger.warning("Overlap check failed for imported case %s: %s", case.id, e)
     return {"message": "Import complete", "imported": imported, "skipped": skipped}
 
 
